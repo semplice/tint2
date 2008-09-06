@@ -1,0 +1,7 @@
+tint2 (0.6.0-1) unstable; urgency=low
+
+  * Initial release (closes: #491596)
+  * Wrote manpage from upstream docs
+  * 01-remove-strip-from-makefile.dpatch: dh_strip will strip the binary instead
+
+ -- Daniel Moerner <dmoerner@gmail.com>  Sat, 06 Sep 2008 07:54:24 -0700
