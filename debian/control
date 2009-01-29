@@ -4,6 +4,8 @@ Priority: optional
 Maintainer: Daniel Moerner <dmoerner@gmail.com>
 Build-Depends: debhelper (>=7), libcairo2-dev, libpango1.0-dev, libglib2.0-dev, libimlib2-dev, libxinerama-dev, libxrandr-dev, dpatch
 Standards-Version: 3.8.0
+Vcs-Git: git://git.debian.org/git/collab-maint/tint2.git
+Vcs-Browser: http://git.debian.org/?p=collab-maint/tint2.git
 Homepage: http://code.google.com/p/tint2/
 
 Package: tint2
