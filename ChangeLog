@@ -1,4 +1,268 @@
 
+----------------------------------------------------------------
+2009-06-30  thilor77 <lorthiois@bbsoft.fr>
+released tint-0.7
+
+2009-06-29
+- fixed bug when active window draged to another desktop
+
+2009-06-29
+- fixed issue 110 and issue 107
+
+2009-06-25
+- improve user's message when compiled with --disable-battery
+- replace 'task_width = width' by 'task_maximum_size = width height'
+  width will be used in horizontal panel
+  height will be used in vertical panel
+
+2009-06-24
+- vertical panel done
+  user's parameters :
+  1) add 'vertical' to panel_position (panel_position = center left vertical)
+  2) use 'task_width' to define the task height (task_width = 30)
+  3) adjust paddingy on task and systray wiil define the size of icons
+  all others parameters are automatically converted by tint2
+  (x padding become y padding, width become height ...)
+  so user's change between horizontal and vertical are minimised.
+
+2009-06-23
+- play with vertical panel
+  check sample file tintrc05 and tintrc06
+  more change to come...
+
+2009-06-21
+- play with some code for vertical panel
+
+2009-06-20
+- remove flickering on systray
+
+2009-06-20
+- 'urgent_nb_of_blink' allow to choose the number of blink
+
+2009-06-19
+- change systray code. fixed issue 91.
+
+2009-06-18
+- patch by Christian Ruppert, configure option for battery
+
+2009-06-14
+- revert r78, fixed issue 100
+
+2009-06-13
+- fixed background refresh on systray
+
+2009-06-09
+- fixed issue 98
+
+2009-06-08
+- fixed issue 97 and issue 95
+
+2009-06-08
+- allow 'taskbar_mode = multi_desktop' config with 'panel_monitor = all'
+
+2009-06-07
+- merge autotool build system by Christian Ruppert
+
+2009-06-06
+- fixed issue 56 : with windowmaker
+  bug in windowmaker : send unecessary 'desktop changed' each time focus changed
+
+2009-06-06
+- add 'wm_menu' config option to disable window manager's menu
+  if you don't specify "wm_menu = ", the default value will show WM menu.
+
+2009-06-06
+- fixed issue 90 and issue 81 : window manager's menu in panel padding
+  works on openbox, pekwm, fluxbox, icewm.
+  doesn't work on xfce, windowmaker ?
+  tint2 send mouse event to your window manager on left/right padding
+  and on top/bottom panel padding.
+
+2009-06-05
+- fixed issue 46 and 59 : urgent task
+  limitation : just one urgent task at a time
+
+2009-06-04
+- patch by dmitry.medvinsky : right/left clic command
+
+2009-06-02
+- Systray Temp_Fix from keshto
+  not yet perfect, but a first step
+
+2009-05-31
+- fixed issue 71 : time format %T %r
+
+2009-05-31
+- fixed issue 86 : padding bug
+
+2009-05-31
+- fixed issue 87 and 88 : battery detection
+
+2009-05-26
+- fixed memory leak and battery detection
+
+2009-05-20
+- merge patch from yarin.kaul (fixed issue 52)
+
+2009-05-15
+- merge battery applet from Sebastian Reichel <elektranox@gmail.com>
+
+2009-03-14
+- add systray option when convert tint-0.6 config file
+  but you need to stop other systemtray program
+
+2009-03-07
+- fixed segfault when time1_format empty
+- fixed systray : when clock change size
+- fixed systray segfault when xrandr change size
+
+2009-03-01
+- fixed segfault on tray application due to tint2
+
+2009-03-01
+- cleanup code
+- basic systray with some bugs
+- update documentation and tintrc sample for systray
+
+2009-02-27
+- fixed issue 49 : patch from Daniel Moerner
+- some systray code (doesn't work)
+- cleanup code
+
+2009-02-25
+- fixed issue 48 : tint2 does't create config file on first start
+
+2009-02-14
+- fixed issue 45 : segfault without clock
+
+2009-02-13
+- improved object oriented layout
+- tint2 looks good for me. if you see bugs, report it.
+
+2009-02-12
+- fixed issue 14 : no icons
+
+2009-02-11
+- fixed bug with number of desktop changed
+- fixed clock resize when date changed
+
+2009-02-08
+- backward compatibility with tint-0.6 (convert config file)
+  feature freeze until next release. need bug correction.
+
+2009-02-07
+- better multi-monitor capability :
+  -> panel_monitor = all : tint2 draw one panel per monitor
+  -> panel_size = 90% 30 : panel_size accept percentage or pixel
+- change notation : MULTI_MONITOR changed to SINGLE_MONITOR
+  in SINGLE_MONITOR mode, tint2 draw one taskbar with tasks from current monitor
+- removed sleep mode (replaced by panel_monitor = all)
+- update documentation and sample config file
+
+2009-02-03
+- better fixed for Robert Escriva problem : set_panel_properties -> Reserved space
+- fixed issue 13 with background detection
+- fixed bug with disconnected monitor (in multi monitor mode)
+- removed capability to show Window magager's menu
+  it's a feature I would like, but implementation was buggy
+
+2009-01-29
+- use panel_margin parameter even with full_width
+- multi_monitor mode : monitor number are ordered according to coordinate
+  so taskbar on the left show task in the left monitor
+
+2009-01-20
+- change config file format : add another padding parameter
+- update documentation and sample config file
+
+2009-01-19
+- patch from Robert Escriva, fixed tint2 on multi-monitor
+- fixed bug between MULTI_MONITOR mode and 'task on all desktop'
+
+2009-01-18
+- update documentation for new config format
+- fixed memory corruption
+- fixed bug with "task on all desktop" (issue 39)
+
+2009-01-17
+- fixed drawing of active task (with new layout)
+
+2009-01-05
+- fixed decorated window with compiz
+
+2008-12-30
+- fixed bug : segfault on ConfigureNotify event
+
+2008-11-12
+- fixed bug : segfault with icon
+- panel's left and right padding feel like WM background
+  (right click open window managers's menu, ...)
+
+2008-11-02
+- fixed bugs with new design
+- panel.area manage the tree of visible objects
+
+2008-10-28
+- fixed issue : "untitled task", "task button did not update", "window don't shade",
+  "error if I don't do 'make install'", "Makefile error"
+
+2008-09-24
+- change tintrc format
+  user can define a list of background and border at the beginning of tintrc
+  and each object (panel, taskbar, task, clock, systray) get a background number.
+  the background number 0 is reserved by tint2 for full transparency.
+  user's background start with number 1, 2, ...
+
+2008-09-22
+- better control on icon opacity
+  icon opacity use the same value as text opacity
+
+2008-09-21
+- new parameter task_text = 0 or 1
+  so you can show task's icon without text
+- remove task_icon_size parameter because icon_size is calculate with task->padding_y
+
+2008-09-19
+- improve clock drawing on 2 lines
+- new design : object oriented
+    clock inherit Area (with draw_background)
+- rename parameter 'panel_mode' in 'taskbar_mode'
+
+2008-09-17
+- change name from tint to tint2 because debian has already a package named tint
+- new design : object oriented
+    tasks inherit Area
+    taskbars inherit Area
+
+2008-09-16
+- new design : object oriented
+    remove task_margin parameter, replaced by taskbar_padding
+    fixed segfault with new layout
+
+2008-09-04
+- new design : object oriented
+  all objects inherit from Area : panel, taskbar, task, clock
+
+2008-09-02 licence changed to GPL V2
+>     Hi Pål,
+>     Since latest release (tint-0.6), I try to merge a systray in tint.
+>     The code I would like to merge is under GPL V2 licence.
+>     So are you agree to change the licence of tint to GPL V2 ?
+Pål Staurland answer :
+ Yeah no problem::)
+
+2008-08-17 patch from i...@noctus.net
+- fixed bug : "Task button titles do not update"
+
+2008-08-12
+- code cleanup : Taskbar use GSLIST from glib
+
+2008-08-07
+- add 1 space between task title and icon
+
+2008-07-25
+- fixed bug when (task_rounded > panel_height/2)
+
 
 ----------------------------------------------------------------
 2008-07-20  thil7 <lorthiois@bbsoft.fr>
@@ -18,7 +282,7 @@ released tint-0.6
 - update documentation
 
 2008-07-04
-- changed in config file, panel_show_all_desktop 
+- changed in config file, panel_show_all_desktop
   replaced by panel_mode = single_desktop / multi_desktop / multi_monitor
 - with panel_mode = multi_monitor, tint show one taskbar by monitor
 
@@ -32,24 +296,24 @@ released tint-0.6
 2008-06-30 patch from goo...@dougbarton.us
 - tint wait for window manager on startup
 
-2008-06-29 
+2008-06-29
 - specify monitor with parameter 'panel_monitor'
 - panel_position is relative to your monitor
   panel_monitor = 1
   panel_position = bottom center
 
-2008-06-24 
+2008-06-24
 - fixed bug : show tint on all desktop with fluxbox
 
-2008-06-23 
+2008-06-23
 - task_width = 0 to get full taskbar width
 - added documentation in /doc
 
-2008-06-16 
+2008-06-16
 - renamed parameter panel_margin to panel_padding
 - added parameter panel_margin = vertical_margin horizontal_margin
 
-2008-06-15 
+2008-06-15
 - fixed bug : icon position changed when clock adjust width
 - removed boolean parameter panel_background and task_background
   replaced with opacity (alpha) = 0
@@ -57,51 +321,51 @@ released tint-0.6
   identical to task_border_width
 - fixed bug : draw task below panel border
 
-2008-06-11 
+2008-06-11
 - removed the need of desktop margin.
   tint specify margin to window magager (_NET_WM_STRUT)
 
-2008-06-10 
+2008-06-10
 - fixed bug : time/date vertical and horizontal center
 
 2008-06-10  patch from benjaminfranzke
 - fixed bug : draw icon on 64bit system.
 
-2008-06-08 
+2008-06-08
 - fixed bug : in draw border and fill background
 
-2008-06-04 
+2008-06-04
 - allow config file on the command line : tint -c ./tintrc2
 - allow 2 value in config file : key = value1 value2
 - panel_margin can get 2 values : vertical_margin horizontal_margin
   panel_margin = 8 4
 
-2008-05-30 
+2008-05-30
 - put panel below other window
 - set locale LANG
 
-2008-05-28 
+2008-05-28
 - clock_width adjust automatically
 - configure : time2_format see 'man strftime'
 
-2008-05-27 
+2008-05-27
 - configure : time1_format see 'man strftime'
 - cleanup code : refresh_pos()
 
-2008-05-26 
+2008-05-26
 - catch time event in main loop
 - draw clock fixed format %H:%M
 
-2008-05-24 
+2008-05-24
 - removed boolean parameter task_icon
   task_icon_size = 0 replace task_icon = 0
 - all colors parameters can get 2 values : color and opacity (alpha)
   font_color = #ffffff 70
 
-2008-05-23 
+2008-05-23
 - cpu optimisation : limit call to visual_refresh()
 
-2008-05-22 
+2008-05-22
 - configure clock : clock_font, clock_font_color
 
 
@@ -109,7 +373,7 @@ released tint-0.6
 2008-05-20  thil7 <lorthiois@bbsoft.fr>
 released tint-0.5
 
-2008-05-19 
+2008-05-19
 - improve usability in mode 'show_all_desktop'
   -> don't switch desktop when close a task of another desktop
   -> allow to drag and drop task between desktop
@@ -130,7 +394,7 @@ released tint-0.5
 2008-05-14  thil7 <lorthiois@bbsoft.fr>
 released tint-0.4
 
-2008-05-12 
+2008-05-12
 - boolean option 'show_all_desktop'
   0 : tint panel show one taskbar (from current desktop)
   1 : tint panel show all taskbars (from all desktops)
@@ -147,7 +411,7 @@ released tint-0.4
 2008-05-10  thil7 <lorthiois@bbsoft.fr>
 released tint-0.3
 
-2008-05-10 
+2008-05-10
 - manage events : 'send to desktop' and 'send to all desktop'
 - bug solved : 'close' action now send _NET_CLOSE_WINDOW
   so openoffice ask 'save document...' if needed
@@ -162,27 +426,27 @@ released tint-0.3
 2008-05-09  thil7 <lorthiois@bbsoft.fr>
 released tint-0.2
 
-2008-05-08 
+2008-05-08
 - panel : add rounded and border (color and alpha)
-- remove option 'panel_tasks_centered' 
+- remove option 'panel_tasks_centered'
 - user can configure mouse event on task
   (none, toggle, iconify, shade, close, toggle_iconify)
 
-2008-05-07 
-- cpu optimisation : resize_tasks only when add/remove task, 
+2008-05-07
+- cpu optimisation : resize_tasks only when add/remove task,
   compute pos_y at startup
 
-2008-05-04 
+2008-05-04
 - task width adjust when too many task
 
-2008-05-01 
+2008-05-01
 - task : add rounded and border (color and alpha)
 - panel position (left, right, center) thank to ak47izatool
 - cleanup code : vertical position (icon and text),
   better refresh after delete task, memory leak *font
 - panel : changed panel_margin and task_margin
 
-2008-04-22 
+2008-04-22
 - fork ttm projet from p://code.google.com/p/ttm/ (by Pål Staurland staura@gmail.com)
   while the projet is no longer in developpement, have not changed the name of 'tint'.
 
