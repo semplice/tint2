@@ -1,8 +1,9 @@
 tint2 (0.6.0-2) unstable; urgency=low
 
-  * Added Vcs-Git and Vcs-Browser fields to debian/control
+  * Added Vcs-Git and Vcs-Browser fields to debian/control.
+  * Update watch file to point to tint2.
 
- -- Daniel Moerner <dmoerner@gmail.com>  Wed, 28 Jan 2009 16:59:34 -0800
+ -- Daniel Moerner <dmoerner@gmail.com>  Tue, 30 Jun 2009 13:07:49 -0700
 
 tint2 (0.6.0-1) unstable; urgency=low
 

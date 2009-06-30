@@ -1,4 +1,4 @@
 version=3
 
 http://code.google.com/p/tint2/downloads/list \
-	http://tint2.googlecode.com/files/tint-(.*)\.tar\.gz
+	http://tint2.googlecode.com/files/tint2-(.*)\.tar\.gz
