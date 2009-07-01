@@ -6,4 +6,4 @@
 # Upstream ships an empty NEWS file; remove it to quiet lintian.
 override_dh_auto_install:
 	dh_auto_install
-	rm -f debian/tmp/usr/share/doc/tint2/NEWS
+	rm -f debian/tint2/usr/share/doc/tint2/NEWS
