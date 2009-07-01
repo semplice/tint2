@@ -3,5 +3,7 @@
 %:
 	dh $@
 
-override_dh_installdocs:
-	dh_installdocs -XNEWS
+# Upstream ships an empty NEWS file; remove it to quiet lintian.
+override_dh_auto_install:
+	dh_auto_install
+	rm -f debian/tmp/usr/share/doc/tint2/NEWS
