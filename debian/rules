@@ -2,3 +2,6 @@
 
 %:
 	dh $@
+
+override_dh_installdocs:
+	dh_installdocs -XNEWS
