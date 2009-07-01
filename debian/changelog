@@ -5,10 +5,11 @@ tint2 (0.7-1) unstable; urgency=low
     - Remove debian/tint.1: integrated upstream (Closes: #532307)
     - Remove dpatch and patches/01-remove-strip-from-makefile.dpatch:
       integrated upstream.
+    - Refresh debian/examples and debian/docs
   * Added Vcs-Git and Vcs-Browser fields to debian/control.
   * 
 
- -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 00:51:52 -0700
+ -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 00:54:15 -0700
 
 tint2 (0.6.0-1) unstable; urgency=low
 
