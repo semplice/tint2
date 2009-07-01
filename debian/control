@@ -3,7 +3,7 @@ Section: x11
 Priority: optional
 Maintainer: Daniel Moerner <dmoerner@gmail.com>
 Build-Depends: debhelper (>=7), libcairo2-dev, libpango1.0-dev, libglib2.0-dev, libimlib2-dev, libxinerama-dev, libxrandr-dev
-Standards-Version: 3.8.0
+Standards-Version: 3.8.2
 Vcs-Git: git://git.debian.org/git/collab-maint/tint2.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/tint2.git
 Homepage: http://code.google.com/p/tint2/
@@ -16,7 +16,8 @@ Description: lightweight taskbar
  also work with other window managers. The taskbar includes transparency and 
  color settings for the font, icons, border, and background. It also supports
  multihead setups, customized mouse actions, and a built-in clock. Tint was
- originally based on ttm code.
+ originally based on ttm code. Since then, support has also been added
+ for a battery monitor and system tray.
  .
  The goal is to keep a clean and unintrusive look with code lightweight and
  compliance with freedesktop specification.
