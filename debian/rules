@@ -1,14 +1,12 @@
 #!/usr/bin/make -f
 
-include /usr/share/dpatch/dpatch.make
-
 build: build-stamp
-build-stamp: patch-stamp
+build-stamp: 
 	dh build
 	make -C src/ tint
 	touch build-stamp
 
-clean: unpatch
+clean: 
 	make -C src/ clean
 	dh clean
 
