@@ -9,8 +9,9 @@ tint2 (0.7-1) unstable; urgency=low
     - tint2 is now licensed under the GPL-2.
   * Added Vcs-Git and Vcs-Browser fields to debian/control.
   * Updated to Standards Version 3.8.2
+  * Switched to tiny dh 7 rules file.
 
- -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 01:00:32 -0700
+ -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 01:01:08 -0700
 
 tint2 (0.6.0-1) unstable; urgency=low
 

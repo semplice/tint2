@@ -1,27 +1,4 @@
 #!/usr/bin/make -f
 
-build: build-stamp
-build-stamp: 
-	dh build
-	make -C src/ tint
-	touch build-stamp
-
-clean: 
-	make -C src/ clean
-	dh clean
-
-install: build install-stamp
-install-stamp:
-	dh install --until dh_prep
-	make -C src/ install DESTDIR=../debian/tint2/
-	dh install --remaining
-	touch install-stamp
-
-binary-arch: install
-	dh binary-arch
-
-binary-indep:
-
-binary: binary-arch binary-indep
-
-.PHONY: binary binary-arch binary-indep build clean install
+%:
+	dh $@
