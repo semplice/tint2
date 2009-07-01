@@ -5,13 +5,13 @@ tint2 (0.7-1) unstable; urgency=low
     - Remove debian/tint.1: integrated upstream (Closes: #532307)
     - Remove dpatch and patches/01-remove-strip-from-makefile.dpatch:
       integrated upstream.
-    - Refresh debian/examples and debian/docs
+    - Refresh debian/examples and remove debian/docs
     - tint2 is now licensed under the GPL-2.
   * Added Vcs-Git and Vcs-Browser fields to debian/control.
   * Updated to Standards Version 3.8.2
   * Switched to tiny dh 7 rules file with overrides.
 
- -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 01:59:42 -0700
+ -- Daniel Moerner <dmoerner@gmail.com>  Wed, 01 Jul 2009 02:01:27 -0700
 
 tint2 (0.6.0-1) unstable; urgency=low
 
