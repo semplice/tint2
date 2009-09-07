@@ -1,5 +1,6 @@
-tint2 (0.7-2) unstable; urgency=low
+tint2 (0.7.1-1) unstable; urgency=low
 
+  * New Upstream Version
   * debian/watch: add uversionmangle line to ignore upstream's beta
     releases.
 
