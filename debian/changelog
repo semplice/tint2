@@ -3,9 +3,9 @@ tint2 (0.7.1-1) unstable; urgency=low
   * New Upstream Version
   * debian/watch: add uversionmangle line to ignore upstream's beta
     releases.
-  * debian/control: Update to Debian Policy 3.8.3
+  * debian/control: Update to Debian Policy 3.8.3, fix description typo.
 
- -- Daniel Moerner <dmoerner@gmail.com>  Sun, 06 Sep 2009 17:25:37 -0700
+ -- Daniel Moerner <dmoerner@gmail.com>  Sun, 06 Sep 2009 18:57:06 -0700
 
 tint2 (0.7-1) unstable; urgency=low
 
