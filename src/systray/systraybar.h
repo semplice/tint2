@@ -20,35 +20,41 @@
 
 
 typedef struct {
-   // always start with area
-   Area area;
+	// always start with area
+	Area area;
 
 	GSList *list_icons;
+	int sort;
 } Systraybar;
 
 
 typedef struct
 {
-   Window id;
-   int x, y;
-   int width, height;
+	Window id;
+	int x, y;
+	int width, height;
+	// TODO: manage icon's show/hide
+	int hide;
 } TrayWindow;
 
 
+// net_sel_win != None when protocol started
 extern Window net_sel_win;
 extern Systraybar systray;
 extern int refresh_systray;
-
+extern int systray_enabled;
 
 void init_systray();
+void init_systray_panel(void *p);
 void cleanup_systray();
 void draw_systray(void *obj, cairo_t *c, int active);
 void resize_systray(void *obj);
 
 
 // systray protocol
-int init_net();
-void cleanup_net();
+// many tray icon doesn't manage stop/restart of the systray manager
+void start_net();
+void stop_net();
 void net_message(XClientMessageEvent *e);
 
 gboolean add_icon(Window id);

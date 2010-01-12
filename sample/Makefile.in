@@ -13,6 +13,7 @@
 # PARTICULAR PURPOSE.
 
 @SET_MAKE@
+
 VPATH = @srcdir@
 pkgdatadir = $(datadir)/@PACKAGE@
 pkglibdir = $(libdir)/@PACKAGE@
@@ -29,8 +30,9 @@ POST_INSTALL = :
 NORMAL_UNINSTALL = :
 PRE_UNINSTALL = :
 POST_UNINSTALL = :
-subdir = doc
-DIST_COMMON = $(srcdir)/Makefile.am $(srcdir)/Makefile.in
+subdir = sample
+DIST_COMMON = $(am__dist_examples_DATA_DIST) $(dist_rc_DATA) \
+	$(srcdir)/Makefile.am $(srcdir)/Makefile.in
 ACLOCAL_M4 = $(top_srcdir)/aclocal.m4
 am__aclocal_m4_deps = $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
@@ -40,10 +42,20 @@ CONFIG_HEADER = $(top_builddir)/config.h
 CONFIG_CLEAN_FILES =
 SOURCES =
 DIST_SOURCES =
-man1dir = $(mandir)/man1
-am__installdirs = "$(DESTDIR)$(man1dir)"
-NROFF = nroff
-MANS = $(man1_MANS)
+am__dist_examples_DATA_DIST = default.tint2rc \
+	vertical_icon_only.tint2rc rounded_multi_desktop.tint2rc \
+	black_single_desktop.tint2rc horizontal_icon_only.tint2rc \
+	white_single_desktop.tint2rc
+am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
+am__vpath_adj = case $$p in \
+    $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
+    *) f=$$p;; \
+  esac;
+am__strip_dir = `echo $$p | sed -e 's|^.*/||'`;
+am__installdirs = "$(DESTDIR)$(examplesdir)" "$(DESTDIR)$(rcdir)"
+dist_examplesDATA_INSTALL = $(INSTALL_DATA)
+dist_rcDATA_INSTALL = $(INSTALL_DATA)
+DATA = $(dist_examples_DATA) $(dist_rc_DATA)
 DISTFILES = $(DIST_COMMON) $(DIST_SOURCES) $(TEXINFOS) $(EXTRA_DIST)
 ACLOCAL = @ACLOCAL@
 AMTAR = @AMTAR@
@@ -153,8 +165,18 @@ sysconfdir = @sysconfdir@
 target_alias = @target_alias@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-man1_MANS = $(PACKAGE_NAME).1
-EXTRA_DIST = $(man1_MANS)
+rcdir = $(sysconfdir)/xdg/$(PACKAGE_NAME)
+dist_rc_DATA = tint2rc
+@INSTALL_EXAMPLES_FALSE@examplesdir = 
+@INSTALL_EXAMPLES_TRUE@examplesdir = $(docdir)/examples
+@INSTALL_EXAMPLES_FALSE@dist_examples_DATA = 
+@INSTALL_EXAMPLES_TRUE@dist_examples_DATA = default.tint2rc \
+@INSTALL_EXAMPLES_TRUE@					 vertical_icon_only.tint2rc \
+@INSTALL_EXAMPLES_TRUE@					 rounded_multi_desktop.tint2rc \
+@INSTALL_EXAMPLES_TRUE@					 black_single_desktop.tint2rc \
+@INSTALL_EXAMPLES_TRUE@					 horizontal_icon_only.tint2rc \
+@INSTALL_EXAMPLES_TRUE@					 white_single_desktop.tint2rc
+
 all: all-am
 
 .SUFFIXES:
@@ -167,9 +189,9 @@ $(srcdir)/Makefile.in:  $(srcdir)/Makefile.am  $(am__configure_deps)
 	      exit 1;; \
 	  esac; \
 	done; \
-	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu  doc/Makefile'; \
+	echo ' cd $(top_srcdir) && $(AUTOMAKE) --gnu  sample/Makefile'; \
 	cd $(top_srcdir) && \
-	  $(AUTOMAKE) --gnu  doc/Makefile
+	  $(AUTOMAKE) --gnu  sample/Makefile
 .PRECIOUS: Makefile
 Makefile: $(srcdir)/Makefile.in $(top_builddir)/config.status
 	@case '$?' in \
@@ -187,50 +209,39 @@ $(top_srcdir)/configure:  $(am__configure_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
 $(ACLOCAL_M4):  $(am__aclocal_m4_deps)
 	cd $(top_builddir) && $(MAKE) $(AM_MAKEFLAGS) am--refresh
-install-man1: $(man1_MANS) $(man_MANS)
+install-dist_examplesDATA: $(dist_examples_DATA)
 	@$(NORMAL_INSTALL)
-	test -z "$(man1dir)" || $(MKDIR_P) "$(DESTDIR)$(man1dir)"
-	@list='$(man1_MANS) $(dist_man1_MANS) $(nodist_man1_MANS)'; \
-	l2='$(man_MANS) $(dist_man_MANS) $(nodist_man_MANS)'; \
-	for i in $$l2; do \
-	  case "$$i" in \
-	    *.1*) list="$$list $$i" ;; \
-	  esac; \
-	done; \
-	for i in $$list; do \
-	  if test -f $(srcdir)/$$i; then file=$(srcdir)/$$i; \
-	  else file=$$i; fi; \
-	  ext=`echo $$i | sed -e 's/^.*\\.//'`; \
-	  case "$$ext" in \
-	    1*) ;; \
-	    *) ext='1' ;; \
-	  esac; \
-	  inst=`echo $$i | sed -e 's/\\.[0-9a-z]*$$//'`; \
-	  inst=`echo $$inst | sed -e 's/^.*\///'`; \
-	  inst=`echo $$inst | sed '$(transform)'`.$$ext; \
-	  echo " $(INSTALL_DATA) '$$file' '$(DESTDIR)$(man1dir)/$$inst'"; \
-	  $(INSTALL_DATA) "$$file" "$(DESTDIR)$(man1dir)/$$inst"; \
+	test -z "$(examplesdir)" || $(MKDIR_P) "$(DESTDIR)$(examplesdir)"
+	@list='$(dist_examples_DATA)'; for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  f=$(am__strip_dir) \
+	  echo " $(dist_examplesDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(examplesdir)/$$f'"; \
+	  $(dist_examplesDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(examplesdir)/$$f"; \
 	done
-uninstall-man1:
+
+uninstall-dist_examplesDATA:
 	@$(NORMAL_UNINSTALL)
-	@list='$(man1_MANS) $(dist_man1_MANS) $(nodist_man1_MANS)'; \
-	l2='$(man_MANS) $(dist_man_MANS) $(nodist_man_MANS)'; \
-	for i in $$l2; do \
-	  case "$$i" in \
-	    *.1*) list="$$list $$i" ;; \
-	  esac; \
-	done; \
-	for i in $$list; do \
-	  ext=`echo $$i | sed -e 's/^.*\\.//'`; \
-	  case "$$ext" in \
-	    1*) ;; \
-	    *) ext='1' ;; \
-	  esac; \
-	  inst=`echo $$i | sed -e 's/\\.[0-9a-z]*$$//'`; \
-	  inst=`echo $$inst | sed -e 's/^.*\///'`; \
-	  inst=`echo $$inst | sed '$(transform)'`.$$ext; \
-	  echo " rm -f '$(DESTDIR)$(man1dir)/$$inst'"; \
-	  rm -f "$(DESTDIR)$(man1dir)/$$inst"; \
+	@list='$(dist_examples_DATA)'; for p in $$list; do \
+	  f=$(am__strip_dir) \
+	  echo " rm -f '$(DESTDIR)$(examplesdir)/$$f'"; \
+	  rm -f "$(DESTDIR)$(examplesdir)/$$f"; \
+	done
+install-dist_rcDATA: $(dist_rc_DATA)
+	@$(NORMAL_INSTALL)
+	test -z "$(rcdir)" || $(MKDIR_P) "$(DESTDIR)$(rcdir)"
+	@list='$(dist_rc_DATA)'; for p in $$list; do \
+	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
+	  f=$(am__strip_dir) \
+	  echo " $(dist_rcDATA_INSTALL) '$$d$$p' '$(DESTDIR)$(rcdir)/$$f'"; \
+	  $(dist_rcDATA_INSTALL) "$$d$$p" "$(DESTDIR)$(rcdir)/$$f"; \
+	done
+
+uninstall-dist_rcDATA:
+	@$(NORMAL_UNINSTALL)
+	@list='$(dist_rc_DATA)'; for p in $$list; do \
+	  f=$(am__strip_dir) \
+	  echo " rm -f '$(DESTDIR)$(rcdir)/$$f'"; \
+	  rm -f "$(DESTDIR)$(rcdir)/$$f"; \
 	done
 tags: TAGS
 TAGS:
@@ -267,9 +278,9 @@ distdir: $(DISTFILES)
 	done
 check-am: all-am
 check: check-am
-all-am: Makefile $(MANS)
+all-am: Makefile $(DATA)
 installdirs:
-	for dir in "$(DESTDIR)$(man1dir)"; do \
+	for dir in "$(DESTDIR)$(examplesdir)" "$(DESTDIR)$(rcdir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -315,7 +326,7 @@ info: info-am
 
 info-am:
 
-install-data-am: install-man
+install-data-am: install-dist_examplesDATA install-dist_rcDATA
 
 install-dvi: install-dvi-am
 
@@ -325,7 +336,7 @@ install-html: install-html-am
 
 install-info: install-info-am
 
-install-man: install-man1
+install-man:
 
 install-pdf: install-pdf-am
 
@@ -349,22 +360,21 @@ ps: ps-am
 
 ps-am:
 
-uninstall-am: uninstall-man
-
-uninstall-man: uninstall-man1
+uninstall-am: uninstall-dist_examplesDATA uninstall-dist_rcDATA
 
 .MAKE: install-am install-strip
 
 .PHONY: all all-am check check-am clean clean-generic distclean \
 	distclean-generic distdir dvi dvi-am html html-am info info-am \
-	install install-am install-data install-data-am install-dvi \
+	install install-am install-data install-data-am \
+	install-dist_examplesDATA install-dist_rcDATA install-dvi \
 	install-dvi-am install-exec install-exec-am install-html \
 	install-html-am install-info install-info-am install-man \
-	install-man1 install-pdf install-pdf-am install-ps \
-	install-ps-am install-strip installcheck installcheck-am \
-	installdirs maintainer-clean maintainer-clean-generic \
-	mostlyclean mostlyclean-generic pdf pdf-am ps ps-am uninstall \
-	uninstall-am uninstall-man uninstall-man1
+	install-pdf install-pdf-am install-ps install-ps-am \
+	install-strip installcheck installcheck-am installdirs \
+	maintainer-clean maintainer-clean-generic mostlyclean \
+	mostlyclean-generic pdf pdf-am ps ps-am uninstall uninstall-am \
+	uninstall-dist_examplesDATA uninstall-dist_rcDATA
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.

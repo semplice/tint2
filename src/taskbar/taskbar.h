@@ -10,17 +10,17 @@
 
 #include "task.h"
 
-
+// tint2 use one taskbar per desktop.
 typedef struct {
-   // always start with area
-   Area area;
+	// always start with area
+	Area area;
 
-   int desktop;
+	int desktop;
 
-   // task parameters
-   int task_width;
-   int task_modulo;
-   int text_width;
+	// task parameters
+	int task_width;
+	int task_modulo;
+	int text_width;
 } Taskbar;
 
 
