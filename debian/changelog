@@ -2,7 +2,7 @@ tint2 (0.8-1) unstable; urgency=low
 
   * New Upstream Version
   * debian/examples: Upstream has renamed the sample tint2rc files.
-  * Switch to dpkg-source 3.0 (quilt) format
+  * debian/source: Switch to dpkg-source 3.0 (quilt) format.
 
  -- Daniel Moerner <dmoerner@gmail.com>  Tue, 12 Jan 2010 11:16:19 -0800
 
