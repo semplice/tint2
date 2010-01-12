@@ -17,19 +17,22 @@
 #include "common.h"
 #include "area.h"
 
-typedef struct Battery {
-   // always start with area
-   Area area;
 
-   config_color font;
-   int bat1_posy;
-   int bat2_posy;
+// battery drawing parameter (per panel)
+typedef struct Battery {
+	// always start with area
+	Area area;
+
+	config_color font;
+	int bat1_posy;
+	int bat2_posy;
 } Battery;
 
 enum chargestate {
 	BATTERY_UNKNOWN,
 	BATTERY_CHARGING,
-	BATTERY_DISCHARGING
+	BATTERY_DISCHARGING,
+	BATTERY_FULL
 };
 
 typedef struct battime {
@@ -47,6 +50,7 @@ typedef struct batstate {
 extern struct batstate battery_state;
 extern PangoFontDescription *bat1_font_desc;
 extern PangoFontDescription *bat2_font_desc;
+extern int battery_enabled;
 
 extern int8_t battery_low_status;
 extern char *battery_low_cmd;
@@ -57,6 +61,8 @@ extern char *path_energy_now, *path_energy_full, *path_current_now, *path_status
 void update_battery();
 
 void init_battery();
+void init_battery_panel(void *panel);
+void cleanup_battery();
 
 void draw_battery(void *obj, cairo_t *c, int active);
 

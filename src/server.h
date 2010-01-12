@@ -37,6 +37,8 @@ typedef struct Global_atom
 	Atom _NET_WM_DESKTOP;
 	Atom WM_STATE;
 	Atom _NET_WM_STATE;
+	Atom _NET_WM_STATE_MAXIMIZED_VERT;
+	Atom _NET_WM_STATE_MAXIMIZED_HORZ;
 	Atom _NET_WM_STATE_SHADED;
 	Atom _NET_WM_STATE_BELOW;
 	Atom _NET_WM_STATE_MODAL;
@@ -48,11 +50,11 @@ typedef struct Global_atom
 	Atom _NET_CLOSE_WINDOW;
 	Atom UTF8_STRING;
 	Atom _NET_SUPPORTING_WM_CHECK;
-	Atom _WIN_LAYER;
 	Atom _NET_WM_STRUT_PARTIAL;
 	Atom WM_NAME;
 	Atom __SWM_VROOT;
 	Atom _MOTIF_WM_HINTS;
+	Atom WM_HINTS;
 	Atom _NET_SYSTEM_TRAY_SCREEN;
 	Atom _NET_SYSTEM_TRAY_OPCODE;
 	Atom MANAGER;
@@ -60,6 +62,9 @@ typedef struct Global_atom
 	Atom _NET_SYSTEM_TRAY_ORIENTATION;
 	Atom _XEMBED;
 	Atom _XEMBED_INFO;
+	Atom XdndAware;
+	Atom XdndPosition;
+	Atom XdndStatus;
 } Global_atom;
 
 
@@ -110,7 +115,8 @@ void server_init_atoms ();
 void get_root_pixmap();
 
 // detect monitors and desktops
-void get_monitors_and_desktops();
+void get_monitors();
+void get_desktops();
 
 
 #endif
