@@ -1,5 +1,5 @@
 version=3
 
-opts="uversionmangle=s/_.*//" \
+opts="uversionmangle=s/_/~/; s/-/~/" \
 http://code.google.com/p/tint2/downloads/list \
 	http://tint2.googlecode.com/files/tint2-(.*)\.tar\.gz
