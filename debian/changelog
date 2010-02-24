@@ -3,9 +3,11 @@ tint2 (0.9-1) unstable; urgency=low
   * New Upstream Version
   * debian/watch: Upstream uses both _beta and -rc1 for version strings,
     update uversionmangle to handle both.
-  * debian/control: Bump to Version 3.8.4, no changes.
+  * debian/control:
+    - Bump to Version 3.8.4, no changes.
+    - Add libxdamage-dev and libxcomposite-dev to Build-Depends.
 
- -- Daniel Moerner <dmoerner@gmail.com>  Wed, 24 Feb 2010 10:16:57 -0800
+ -- Daniel Moerner <dmoerner@gmail.com>  Wed, 24 Feb 2010 10:21:01 -0800
 
 tint2 (0.8-1) unstable; urgency=low
 
