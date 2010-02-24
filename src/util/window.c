@@ -88,7 +88,7 @@ int window_is_hidden (Window win)
 		}
 		if (at[i] == server.atom._NET_WM_STATE_MODAL) {
 			// do not add modal windows if the transient window is already in the taskbar
-			if ( XGetTransientForHint(server.dsp, win, &window) && task_get_task(window) ) {
+			if ( XGetTransientForHint(server.dsp, win, &window) && task_get_tasks(window) ) {
 				XFree(at);
 				return 1;
 			}
@@ -146,7 +146,19 @@ int window_get_monitor (Window win)
 
 int window_is_iconified (Window win)
 {
-	return (IconicState == get_property32(win, server.atom.WM_STATE, server.atom.WM_STATE));
+	// EWMH specification : minimization of windows use _NET_WM_STATE_HIDDEN.
+	// WM_STATE is not accurate for shaded window and in multi_desktop mode.
+	Atom *at;
+	int count, i;
+	at = server_get_property (win, server.atom._NET_WM_STATE, XA_ATOM, &count);
+	for (i = 0; i < count; i++) {
+		if (at[i] == server.atom._NET_WM_STATE_HIDDEN) {
+			XFree(at);
+			return 1;
+		}
+	}
+	XFree(at);
+	return 0;
 }
 
 

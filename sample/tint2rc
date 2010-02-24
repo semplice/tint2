@@ -31,6 +31,8 @@ panel_padding = 7 0
 font_shadow = 0
 panel_background_id = 1
 wm_menu = 0
+panel_dock = 0
+panel_layer = bottom
 
 #---------------------------------------------
 # TASKBAR
@@ -51,9 +53,17 @@ task_centered = 1
 task_padding = 6 3
 task_font = sans 7
 task_font_color = #ffffff 70
-task_active_font_color = #ffffff 85
 task_background_id = 3
+task_icon_asb = 100 0 0
+# replace STATUS by 'urgent', 'active' or 'iconfied'
+#task_STATUS_background_id = 2
+#task_STATUS_font_color = #ffffff 85
+#task_STATUS_icon_asb = 100 0 0
+# example:
 task_active_background_id = 2
+task_active_font_color = #ffffff 85
+task_active_icon_asb = 100 0 0
+urgent_nb_of_blink = 8
 
 #---------------------------------------------
 # SYSTRAYBAR
@@ -62,6 +72,8 @@ systray = 1
 systray_padding = 0 4 5
 systray_background_id = 0
 systray_sort = left2right
+systray_icon_size = 0
+systray_icon_asb = 100 0 0
 
 #---------------------------------------------
 # CLOCK
@@ -76,11 +88,15 @@ clock_background_id = 0
 #clock_lclick_command = xclock
 clock_rclick_command = orage
 #clock_tooltip = %A %d %B
+#time1_timezone = :US/Hawaii
+#time2_timezone = :Europe/Berlin
+#clock_tooltip_timezone = :/usr/share/zoneinfo/Europe/Paris
 
 #---------------------------------------------
 # BATTERY
 #---------------------------------------------
 battery = 0
+battery_hide = 98
 battery_low_status = 10
 battery_low_cmd = notify-send "battery low"
 bat1_font = sans 8
@@ -108,3 +124,11 @@ mouse_right = close
 mouse_scroll_up = toggle
 mouse_scroll_down = iconify
 
+#---------------------------------------------
+# AUTOHIDE OPTIONS
+#---------------------------------------------
+autohide = 0
+autohide_show_timeout = 0.3
+autohide_hide_timeout = 2
+autohide_height = 4
+strut_policy = minimum

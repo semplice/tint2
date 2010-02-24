@@ -21,28 +21,40 @@
 
 #include <glib.h>
 
-extern GSList* timer_list;
+extern GSList* timeout_list;
+extern struct timeval next_timeout;
 
 
-struct timer {
-	int id;
-	void (*_callback)();
-};
+typedef struct _timeout timeout;
 
 
 // timer functions
-/** installs a timer with the first timeout 'value_sec' and then a periodic timeout with interval_sec
-	* '_callback' is the callback function when the timer reaches the timeout.
-	* If 'value_sec' == 0 then the timer is disabled (but not uninstalled)
-	* If 'interval_sec' == 0 the timer is a single shot timer, ie. no periodic timeout occur
-	* returns the 'id' of the timer, which is needed for uninstalling the timer **/
-int install_timer(int value_sec, int value_nsec, int interval_sec, int interval_nsec, void (*_callback)());
+/**
+  * Single shot timer (i.e. timer with interval_msec == 0) are deleted automatically as soon as they expire
+  * i.e. you do not need to stop them, however it is safe to call stop_timeout for these timers.
+  * Periodic timeouts are aligned to each other whenever possible, i.e. one interval_msec is an
+  * integral multiple of the other.
+**/
 
-/** resets a timer to the new values. If 'id' does not exist nothing happens.
-	* If value_sec == 0 the timer is stopped **/
-void reset_timer(int id, int value_sec, int value_nsec, int interval_sec, int interval_nsec);
+/** installs a timeout with the first timeout of 'value_msec' and then a periodic timeout with
+  * 'interval_msec'. '_callback' is the callback function when the timer reaches the timeout.
+  * returns a pointer to the timeout, which is needed for stopping it again
+**/
+timeout* add_timeout(int value_msec, int interval_msec, void (*_callback)(void*), void* arg);
 
-/** uninstalls a timer with the given 'id'. If no timer is installed with this id nothing happens **/
-void uninstall_timer(int id);
+/** changes timeout 't'. If timeout 't' does not exist, nothing happens **/
+void change_timeout(timeout* t, int value_msec, int interval_msec, void (*_callback)(void*), void* arg);
+
+/** stops the timeout 't' **/
+void stop_timeout(timeout* t);
+
+/** stops all timeouts **/
+void stop_all_timeouts();
+
+/** update_next_timeout updates next_timeout to the value, when the next installed timeout will expire **/
+void update_next_timeout();
+
+/** Callback of all expired timeouts **/
+void callback_timeout_expired();
 
 #endif // TIMER_H

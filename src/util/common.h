@@ -34,22 +34,6 @@ enum { NONE=0, CLOSE, TOGGLE, ICONIFY, SHADE, TOGGLE_ICONIFY, MAXIMIZE_RESTORE, 
 #define ALLDESKTOP  0xFFFFFFFF
 
 
-typedef struct config_border
-{
-	double color[3];
-	double alpha;
-	int width;
-	int rounded;
-} config_border;
-
-
-typedef struct config_color
-{
-	double color[3];
-	double alpha;
-} config_color;
-
-
 // copy file source to file dest
 void copy_file(const char *pathSrc, const char *pathDest);
 
@@ -64,5 +48,8 @@ void get_color (char *hex, double *rgb);
 // adjust Alpha/Saturation/Brightness on an ARGB icon
 // alpha from 0 to 100, satur from 0 to 1, bright from 0 to 1.
 void adjust_asb(DATA32 *data, int w, int h, int alpha, float satur, float bright);
+void createHeuristicMask(DATA32* data, int w, int h);
+
+void render_image(Drawable d, int x, int y, int w, int h);
 #endif
 

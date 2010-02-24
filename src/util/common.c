@@ -21,12 +21,14 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#include <X11/extensions/Xrender.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 
 #include "common.h"
+#include "../server.h"
 
 
 
@@ -42,7 +44,9 @@ void copy_file(const char *pathSrc, const char *pathDest)
 	fileDest = fopen(pathDest, "wb");
 	if (fileDest == NULL) return;
 
-	while ((nb = fread(line, 1, 100, fileSrc)) > 0) fwrite(line, 1, nb, fileDest);
+	while ((nb = fread(line, 1, 100, fileSrc)) > 0)
+		if ( nb != fwrite(line, 1, nb, fileDest))
+			printf("Error while copying file %s to %s\n", pathSrc, pathDest);
 
 	fclose (fileDest);
 	fclose (fileSrc);
@@ -234,3 +238,50 @@ void adjust_asb(DATA32 *data, int w, int h, int alpha, float satur, float bright
 	}
 }
 
+
+void createHeuristicMask(DATA32* data, int w, int h)
+{
+	// first we need to find the mask color, therefore we check all 4 edge pixel and take the color which
+	// appears most often (we only need to check three edges, the 4th is implicitly clear)
+	unsigned int topLeft = data[0], topRight = data[w-1], bottomLeft = data[w*h-w], bottomRight = data[w*h-1];
+	int max = (topLeft == topRight) + (topLeft == bottomLeft) + (topLeft == bottomRight);
+	int maskPos = 0;
+	if ( max < (topRight == topLeft) + (topRight == bottomLeft) + (topRight == bottomRight) ) {
+		max = (topRight == topLeft) + (topRight == bottomLeft) + (topRight == bottomRight);
+		maskPos = w-1;
+	}
+	if ( max < (bottomLeft == topRight) + (bottomLeft == topLeft) + (bottomLeft == bottomRight) )
+		maskPos = w*h-w;
+
+	// now mask out every pixel which has the same color as the edge pixels
+	unsigned char* udata = (unsigned char*)data;
+	unsigned char b = udata[4*maskPos];
+	unsigned char g = udata[4*maskPos+1];
+	unsigned char r = udata[4*maskPos+1];
+	int i;
+	for (i=0; i<h*w; ++i) {
+		if ( b-udata[0] == 0 && g-udata[1] == 0 && r-udata[2] == 0 )
+			udata[3] = 0;
+		udata += 4;
+	}
+}
+
+
+void render_image(Drawable d, int x, int y, int w, int h)
+{
+	// in real_transparency mode imlib_render_image_on_drawable does not the right thing, because
+	// the operation is IMLIB_OP_COPY, but we would need IMLIB_OP_OVER (which does not exist)
+	// Therefore we have to do it with the XRender extension (i.e. copy what imlib is doing internally)
+	// But first we need to render the image onto itself with PictOpIn to adjust the colors to the alpha channel
+	Pixmap pmap_tmp = XCreatePixmap(server.dsp, server.root_win, w, h, 32);
+	imlib_context_set_drawable(pmap_tmp);
+	imlib_context_set_blend(0);
+	imlib_render_image_on_drawable(0, 0);
+	Picture pict_image = XRenderCreatePicture(server.dsp, pmap_tmp, XRenderFindStandardFormat(server.dsp, PictStandardARGB32), 0, 0);
+	Picture pict_drawable = XRenderCreatePicture(server.dsp, d, XRenderFindVisualFormat(server.dsp, server.visual), 0, 0);
+	XRenderComposite(server.dsp, PictOpIn, pict_image, None, pict_image, 0, 0, 0, 0, 0, 0, w, h);
+	XRenderComposite(server.dsp, PictOpOver, pict_image, None, pict_drawable, 0, 0, 0, 0, x, y, w, h);
+	XFreePixmap(server.dsp, pmap_tmp);
+	XRenderFreePicture(server.dsp, pict_image);
+	XRenderFreePicture(server.dsp, pict_drawable);
+}

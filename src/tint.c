@@ -27,9 +27,11 @@
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
 #include <X11/Xlocale.h>
+#include <X11/extensions/Xdamage.h>
 #include <Imlib2.h>
 #include <signal.h>
 
+#include "version.h"
 #include "server.h"
 #include "window.h"
 #include "config.h"
@@ -58,10 +60,10 @@ void init (int argc, char *argv[])
 			exit(0);
 		}
 		if (!strcmp(argv[i], "-v") || !strcmp(argv[i], "--version"))	{
-			printf("tint2 version 0.8\n");
+			printf("tint2 version %s\n", VERSION_STRING);
 			exit(0);
 		}
-		if (!strcmp(argv[i], "-c"))	{
+		if (!strcmp(argv[i], "-c")) {
 			i++;
 			if (i < argc)
 				config_path = strdup(argv[i]);
@@ -72,7 +74,6 @@ void init (int argc, char *argv[])
 				snapshot_path = strdup(argv[i]);
 		}
 	}
-
 	// Set signal handler
 	struct sigaction sa = { .sa_handler = signal_handler };
 	sigaction(SIGUSR1, &sa, 0);
@@ -80,19 +81,24 @@ void init (int argc, char *argv[])
 	sigaction(SIGTERM, &sa, 0);
 	sigaction(SIGHUP, &sa, 0);
 	signal(SIGCHLD, SIG_IGN);		// don't have to wait() after fork()
-	// block all signals, such that no race conditions occur before pselect in our main loop
-	sigset_t block_mask;
-	sigaddset(&block_mask, SIGINT);
-	sigaddset(&block_mask, SIGTERM);
-	sigaddset(&block_mask, SIGHUP);
-	sigaddset(&block_mask, SIGUSR1);
-	sigprocmask(SIG_BLOCK, &block_mask, 0);
 
+	// BSD is too stupid to support pselect(), therefore we have to use select and hope that we do not
+	// end up in a race condition there
+	// block all signals, such that no race conditions occur before pselect in our main loop
+//	sigset_t block_mask;
+//	sigaddset(&block_mask, SIGINT);
+//	sigaddset(&block_mask, SIGTERM);
+//	sigaddset(&block_mask, SIGHUP);
+//	sigaddset(&block_mask, SIGUSR1);
+//	sigprocmask(SIG_BLOCK, &block_mask, 0);
 
 	// set global data
 	memset(&server, 0, sizeof(Server_global));
 	memset(&systray, 0, sizeof(Systraybar));
+}
 
+void init_X11()
+{
 	server.dsp = XOpenDisplay (NULL);
 	if (!server.dsp) {
 		fprintf(stderr, "tint2 exit : could not open display.\n");
@@ -101,17 +107,13 @@ void init (int argc, char *argv[])
 	server_init_atoms ();
 	server.screen = DefaultScreen (server.dsp);
 	server.root_win = RootWindow(server.dsp, server.screen);
-	server.depth = DefaultDepth (server.dsp, server.screen);
-	server.visual = DefaultVisual (server.dsp, server.screen);
 	server.desktop = server_get_current_desktop ();
-	XGCValues  gcv;
-	server.gc = XCreateGC (server.dsp, server.root_win, (unsigned long)0, &gcv);
-
+	server_init_visual();
 	XSetErrorHandler ((XErrorHandler) server_catch_error);
 
 	imlib_context_set_display (server.dsp);
 	imlib_context_set_visual (server.visual);
-	imlib_context_set_colormap (DefaultColormap (server.dsp, server.screen));
+	imlib_context_set_colormap (server.colormap);
 
 	/* Catch events */
 	XSelectInput (server.dsp, server.root_win, PropertyChangeMask|StructureNotifyMask);
@@ -122,6 +124,7 @@ void init (int argc, char *argv[])
 	gchar *path;
 	const gchar * const *data_dirs;
 	data_dirs = g_get_system_data_dirs ();
+	int i;
 	for (i = 0; data_dirs[i] != NULL; i++)	{
 		path = g_build_filename(data_dirs[i], "tint2", "default_icon.png", NULL);
 		if (g_file_test (path, G_FILE_TEST_EXISTS))
@@ -137,6 +140,7 @@ void init (int argc, char *argv[])
 
 void cleanup()
 {
+	stop_all_timeouts();
 	cleanup_systray();
 	stop_net();
 	cleanup_panel();
@@ -153,9 +157,8 @@ void cleanup()
 	if (config_path) g_free(config_path);
 	if (snapshot_path) g_free(snapshot_path);
 
-	if (server.monitor) free(server.monitor);
-	XFreeGC(server.dsp, server.gc);
-	XCloseDisplay(server.dsp);
+	cleanup_server();
+	if (server.dsp) XCloseDisplay(server.dsp);
 }
 
 
@@ -241,26 +244,61 @@ void window_action (Task *tsk, int action)
 }
 
 
+int tint2_handles_click(Panel* panel, XButtonEvent* e)
+{
+	Task* task = click_task(panel, e->x, e->y);
+	if (task) {
+		if(   (e->button == 1)
+			 || (e->button == 2 && mouse_middle != 0)
+			 || (e->button == 3 && mouse_right != 0)
+			 || (e->button == 4 && mouse_scroll_up != 0)
+			 || (e->button == 5 && mouse_scroll_down !=0) )
+		{
+			return 1;
+		}
+		else
+			return 0;
+	}
+	// no task clicked --> check if taskbar clicked
+	Taskbar *tskbar = click_taskbar(panel, e->x, e->y);
+	if (tskbar && e->button == 1 && panel_mode == MULTI_DESKTOP)
+		return 1;
+	if (click_clock(panel, e->x, e->y)) {
+		if ( (e->button == 1 && clock_lclick_command) || (e->button == 3 && clock_rclick_command) )
+			return 1;
+		else
+			return 0;
+	}
+	return 0;
+}
+
+
+void forward_click(XEvent* e)
+{
+	// forward the click to the desktop window (thanks conky)
+	XUngrabPointer(server.dsp, e->xbutton.time);
+	e->xbutton.window = server.root_win;
+	// icewm doesn't open under the mouse.
+	// and xfce doesn't open at all.
+	e->xbutton.x = e->xbutton.x_root;
+	e->xbutton.y = e->xbutton.y_root;
+	//printf("**** %d, %d\n", e->xbutton.x, e->xbutton.y);
+	//XSetInputFocus(server.dsp, e->xbutton.window, RevertToParent, e->xbutton.time);
+	XSendEvent(server.dsp, e->xbutton.window, False, ButtonPressMask, e);
+}
+
+
 void event_button_press (XEvent *e)
 {
 	Panel *panel = get_panel(e->xany.window);
 	if (!panel) return;
 
-	task_drag = click_task(panel, e->xbutton.x, e->xbutton.y);
 
-	if (wm_menu && !task_drag && !click_clock(panel, e->xbutton.x, e->xbutton.y) && (e->xbutton.button != 1) ) {
-		// forward the click to the desktop window (thanks conky)
-		XUngrabPointer(server.dsp, e->xbutton.time);
-		e->xbutton.window = server.root_win;
-		// icewm doesn't open under the mouse.
-		// and xfce doesn't open at all.
-		e->xbutton.x = e->xbutton.x_root;
-		e->xbutton.y = e->xbutton.y_root;
-		//printf("**** %d, %d\n", e->xbutton.x, e->xbutton.y);
-		//XSetInputFocus(server.dsp, e->xbutton.window, RevertToParent, e->xbutton.time);
-		XSendEvent(server.dsp, e->xbutton.window, False, ButtonPressMask, e);
+	if (wm_menu && !tint2_handles_click(panel, &e->xbutton) ) {
+		forward_click(e);
 		return;
 	}
+	task_drag = click_task(panel, e->xbutton.x, e->xbutton.y);
 
 	XLowerWindow (server.dsp, panel->main_win);
 }
@@ -270,6 +308,13 @@ void event_button_release (XEvent *e)
 {
 	Panel *panel = get_panel(e->xany.window);
 	if (!panel) return;
+
+	if (wm_menu && !tint2_handles_click(panel, &e->xbutton)) {
+		forward_click(e);
+		XLowerWindow (server.dsp, panel->main_win);
+		task_drag = 0;
+		return;
+	}
 
 	int action = TOGGLE_ICONIFY;
 	switch (e->xbutton.button) {
@@ -338,7 +383,7 @@ void event_button_release (XEvent *e)
 
 void event_property_notify (XEvent *e)
 {
-	int i, j;
+	int i;
 	Task *tsk;
 	Window win = e->xproperty.window;
 	Atom at = e->xproperty.atom;
@@ -359,6 +404,7 @@ void event_property_notify (XEvent *e)
 				panel1[i].area.resize = 1;
 			}
 			task_refresh_tasklist();
+			active_task();
 			panel_refresh = 1;
 		}
 		// Change desktop
@@ -369,9 +415,12 @@ void event_property_notify (XEvent *e)
 				Panel *panel = &panel1[i];
 				if (panel_mode == MULTI_DESKTOP && panel->g_taskbar.use_active) {
 					// redraw both taskbar
-					panel->taskbar[old_desktop].area.is_active = 0;
-					panel->taskbar[old_desktop].area.resize = 1;
-					panel->taskbar[server.desktop].area.is_active = 1;
+					if (server.nb_desktop > old_desktop) {
+						// can happen if last desktop is deleted and we've been on the last desktop
+						panel->taskbar[old_desktop].area.bg = panel->g_taskbar.bg;
+						panel->taskbar[old_desktop].area.resize = 1;
+					}
+					panel->taskbar[server.desktop].area.bg = panel->g_taskbar.bg_active;
 					panel->taskbar[server.desktop].area.resize = 1;
 					panel_refresh = 1;
 				}
@@ -379,13 +428,15 @@ void event_property_notify (XEvent *e)
 				Taskbar *tskbar;
 				Task *tsk;
 				GSList *l;
-				tskbar = &panel->taskbar[old_desktop];
-				for (l = tskbar->area.list; l ; l = l->next) {
-					tsk = l->data;
-					if (tsk->desktop == ALLDESKTOP) {
-						tsk->area.on_screen = 0;
-						tskbar->area.resize = 1;
-						panel_refresh = 1;
+				if (server.nb_desktop > old_desktop) {
+					tskbar = &panel->taskbar[old_desktop];
+					for (l = tskbar->area.list; l ; l = l->next) {
+						tsk = l->data;
+						if (tsk->desktop == ALLDESKTOP) {
+							tsk->area.on_screen = 0;
+							tskbar->area.resize = 1;
+							panel_refresh = 1;
+						}
 					}
 				}
 				tskbar = &panel->taskbar[server.desktop];
@@ -443,20 +494,10 @@ void event_property_notify (XEvent *e)
 
 		// Window title changed
 		if (at == server.atom._NET_WM_VISIBLE_NAME || at == server.atom._NET_WM_NAME || at == server.atom.WM_NAME) {
-			Task *tsk2;
-			GSList *l0;
 			get_title(tsk);
-			// changed other tsk->title
-			for (i=0 ; i < nb_panel ; i++) {
-				for (j=0 ; j < panel1[i].nb_desktop ; j++) {
-					for (l0 = panel1[i].taskbar[j].area.list; l0 ; l0 = l0->next) {
-						tsk2 = l0->data;
-						if (tsk->win == tsk2->win && tsk != tsk2) {
-							tsk2->title = tsk->title;
-							tsk2->area.redraw = 1;
-						}
-					}
-				}
+			if (g_tooltip.mapped && (g_tooltip.area == (Area*)tsk)) {
+				tooltip_copy_text((Area*)tsk);
+				tooltip_update();
 			}
 			panel_refresh = 1;
 		}
@@ -470,64 +511,28 @@ void event_property_notify (XEvent *e)
 				panel_refresh = 1;
 			}
 		}
-// We do not check for the iconified state, since it only unsets our active window
-// but in openbox a shaded window is considered iconified. So we would loose the active window
-// property on unshading it again (commented 01.10.2009)
-//		else if (at == server.atom.WM_STATE) {
-//			// Iconic state
-//			// TODO : try to delete following code
-//			if (window_is_iconified (win)) {
-//				if (task_active) {
-//					if (task_active->win == tsk->win) {
-//						Task *tsk2;
-//						GSList *l0;
-//						for (i=0 ; i < nb_panel ; i++) {
-//							for (j=0 ; j < panel1[i].nb_desktop ; j++) {
-//								for (l0 = panel1[i].taskbar[j].area.list; l0 ; l0 = l0->next) {
-//									tsk2 = l0->data;
-//									tsk2->area.is_active = 0;
-//								}
-//							}
-//						}
-//						task_active = 0;
-//					}
-//				}
-//			}
-//		}
+		else if (at == server.atom.WM_STATE) {
+			// Iconic state
+			int state = (task_active && tsk->win == task_active->win ? TASK_ACTIVE : TASK_NORMAL);
+			if (window_is_iconified(win))
+				state = TASK_ICONIFIED;
+			set_task_state(tsk, state);
+			panel_refresh = 1;
+		}
 		// Window icon changed
 		else if (at == server.atom._NET_WM_ICON) {
 			get_icon(tsk);
-			Task *tsk2;
-			GSList *l0;
-			for (i=0 ; i < nb_panel ; i++) {
-				for (j=0 ; j < panel1[i].nb_desktop ; j++) {
-					for (l0 = panel1[i].taskbar[j].area.list; l0 ; l0 = l0->next) {
-						tsk2 = l0->data;
-						if (tsk->win == tsk2->win && tsk != tsk2) {
-							tsk2->icon_width = tsk->icon_width;
-							tsk2->icon_height = tsk->icon_height;
-							tsk2->icon = tsk->icon;
-							tsk2->icon_active = tsk->icon_active;
-							tsk2->area.redraw = 1;
-						}
-					}
-				}
-			}
 			panel_refresh = 1;
 		}
 		// Window desktop changed
 		else if (at == server.atom._NET_WM_DESKTOP) {
 			int desktop = window_get_desktop (win);
-			int active = tsk->area.is_active;
 			//printf("  Window desktop changed %d, %d\n", tsk->desktop, desktop);
 			// bug in windowmaker : send unecessary 'desktop changed' when focus changed
 			if (desktop != tsk->desktop) {
 				remove_task (tsk);
 				tsk = add_task (win);
-				if (tsk && active) {
-					tsk->area.is_active = 1;
-					task_active = tsk;
-				}
+				active_task();
 				panel_refresh = 1;
 			}
 		}
@@ -571,9 +576,10 @@ void event_configure_notify (Window win)
 	GSList *l;
 	for (l = systray.list_icons; l ; l = l->next) {
 		traywin = (TrayWindow*)l->data;
-		if (traywin->id == win) {
+		if (traywin->tray_id == win) {
 			//printf("move tray %d\n", traywin->x);
 			XMoveResizeWindow(server.dsp, traywin->id, traywin->x, traywin->y, traywin->width, traywin->height);
+			XResizeWindow(server.dsp, traywin->tray_id, traywin->width, traywin->height);
 			panel_refresh = 1;
 			return;
 		}
@@ -587,10 +593,9 @@ void event_configure_notify (Window win)
 	Panel *p = tsk->area.panel;
 	if (p->monitor != window_get_monitor (win)) {
 		remove_task (tsk);
-		add_task (win);
+		tsk = add_task (win);
 		if (win == window_get_active ()) {
-			Task *tsk = task_get_task (win);
-			tsk->area.is_active = 1;
+			set_task_state(tsk, TASK_ACTIVE);
 			task_active = tsk;
 		}
 		panel_refresh = 1;
@@ -631,17 +636,16 @@ void dnd_message(XClientMessageEvent *e)
 int main (int argc, char *argv[])
 {
 	XEvent e;
+	XClientMessageEvent *ev;
 	fd_set fdset;
 	int x11_fd, i;
 	Panel *panel;
 	GSList *it;
-	GSList* timer_iter;
-	struct timer* timer;
+	struct timeval* timeout;
 
 	init (argc, argv);
-
-	i = 0;
 	init_config();
+	i = 0;
 	if (config_path)
 		i = config_read_file (config_path);
 	else
@@ -651,6 +655,8 @@ int main (int argc, char *argv[])
 		cleanup();
 		exit(1);
 	}
+
+	init_X11();
 	init_panel();
 	cleanup_config();
 	if (snapshot_path) {
@@ -659,34 +665,37 @@ int main (int argc, char *argv[])
 		exit(0);
 	}
 
+	int damage_event, damage_error;
+	XDamageQueryExtension(server.dsp, &damage_event, &damage_error);
 	x11_fd = ConnectionNumber(server.dsp);
 	XSync(server.dsp, False);
 
-	sigset_t empty_mask;
-	sigemptyset(&empty_mask);
+//	sigset_t empty_mask;
+//	sigemptyset(&empty_mask);
 
 	while (1) {
 		if (panel_refresh) {
 			panel_refresh = 0;
 
-			if (refresh_systray) {
-				panel = (Panel*)systray.area.panel;
-				XSetWindowBackgroundPixmap (server.dsp, panel->main_win, None);
-			}
 			for (i=0 ; i < nb_panel ; i++) {
 				panel = &panel1[i];
 
-				if (panel->temp_pmap) XFreePixmap(server.dsp, panel->temp_pmap);
-				panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
-
-				refresh(&panel->area);
-				XCopyArea(server.dsp, panel->temp_pmap, panel->main_win, server.gc, 0, 0, panel->area.width, panel->area.height, 0, 0);
+				if (panel->is_hidden) {
+					XCopyArea(server.dsp, panel->hidden_pixmap, panel->main_win, server.gc, 0, 0, panel->hidden_width, panel->hidden_height, 0, 0);
+					XSetWindowBackgroundPixmap(server.dsp, panel->main_win, panel->hidden_pixmap);
+				}
+				else {
+					if (panel->temp_pmap) XFreePixmap(server.dsp, panel->temp_pmap);
+					panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
+					refresh(&panel->area);
+					XCopyArea(server.dsp, panel->temp_pmap, panel->main_win, server.gc, 0, 0, panel->area.width, panel->area.height, 0, 0);
+				}
 			}
 			XFlush (server.dsp);
 
-			if (refresh_systray) {
+			panel = (Panel*)systray.area.panel;
+			if (refresh_systray && !panel->is_hidden) {
 				refresh_systray = 0;
-				panel = (Panel*)systray.area.panel;
 				// tint2 doen't draw systray icons. it just redraw background.
 				XSetWindowBackgroundPixmap (server.dsp, panel->main_win, panel->temp_pmap);
 				// force icon's refresh
@@ -695,39 +704,33 @@ int main (int argc, char *argv[])
 		}
 
 		// thanks to AngryLlama for the timer
-		// Create a File Description Set containing x11_fd, and every timer_fd
+		// Create a File Description Set containing x11_fd
 		FD_ZERO (&fdset);
 		FD_SET (x11_fd, &fdset);
-		int max_fd = x11_fd;
-		timer_iter = timer_list;
-		while (timer_iter) {
-			timer = timer_iter->data;
-			max_fd = timer->id > max_fd ? timer->id : max_fd;
-			FD_SET(timer->id, &fdset);
-			timer_iter = timer_iter->next;
-		}
+		update_next_timeout();
+		if (next_timeout.tv_sec >= 0 && next_timeout.tv_usec >= 0)
+			timeout = &next_timeout;
+		else
+			timeout = 0;
 
 		// Wait for X Event or a Timer
-		if (pselect(max_fd+1, &fdset, 0, 0, 0, &empty_mask) > 0) {
-			// we need to iterate over the whole timer list, since fd_set can only be checked with the
-			// brute force method FD_ISSET for every possible timer
-			timer_iter = timer_list;
-			while (timer_iter) {
-				timer = timer_iter->data;
-				if (FD_ISSET(timer->id, &fdset)) {
-					uint64_t dummy;
-					if ( -1  != read(timer->id, &dummy, sizeof(uint64_t)) )
-						timer->_callback();
-				}
-				timer_iter = timer_iter->next;
-			}
-
+		if (select(x11_fd+1, &fdset, 0, 0, timeout) > 0) {
 			while (XPending (server.dsp)) {
 				XNextEvent(server.dsp, &e);
 
+				panel = get_panel(e.xany.window);
+				if (panel && panel_autohide) {
+					if (e.type == EnterNotify)
+						autohide_trigger_show(panel);
+					else if (e.type == LeaveNotify)
+						autohide_trigger_hide(panel);
+					if (panel->is_hidden)
+						continue;   // discard further processing of this event because the panel is not visible yet
+				}
+
 				switch (e.type) {
 					case ButtonPress:
-						tooltip_hide();
+						tooltip_hide(0);
 						event_button_press (&e);
 						break;
 
@@ -747,16 +750,12 @@ int main (int argc, char *argv[])
 					}
 
 					case LeaveNotify:
-						tooltip_trigger_hide();
+						if (g_tooltip.enabled)
+							tooltip_trigger_hide();
 						break;
 
 					case Expose:
 						event_expose(&e);
-						break;
-
-					case MapNotify:
-						if (e.xany.window == g_tooltip.window)
-							tooltip_update();
 						break;
 
 					case PropertyNotify:
@@ -777,10 +776,15 @@ int main (int argc, char *argv[])
 						break;
 					case UnmapNotify:
 					case DestroyNotify:
+						if (e.xany.window == server.composite_manager) {
+							// TODO: Stop real_transparency
+							//signal_pending = SIGUSR2;
+							break;
+						}
 						if (e.xany.window == g_tooltip.window || !systray.area.on_screen)
 							break;
 						for (it = systray.list_icons; it; it = g_slist_next(it)) {
-							if (((TrayWindow*)it->data)->id == e.xany.window) {
+							if (((TrayWindow*)it->data)->tray_id == e.xany.window) {
 								remove_icon((TrayWindow*)it->data);
 								break;
 							}
@@ -788,6 +792,17 @@ int main (int argc, char *argv[])
 					break;
 
 					case ClientMessage:
+						ev = &e.xclient;
+						if (ev->data.l[1] == server.atom._NET_WM_CM_S0) {
+							if (ev->data.l[2] == None)
+								// TODO: Stop real_transparency
+								//signal_pending = SIGUSR2;
+								;
+							else
+								// TODO: Start real_transparency
+								//signal_pending = SIGUSR2;
+								;
+						}
 						if (!systray.area.on_screen) break;
 						if (e.xclient.message_type == server.atom._NET_SYSTEM_TRAY_OPCODE && e.xclient.format == 32 && e.xclient.window == net_sel_win) {
 							net_message(&e.xclient);
@@ -796,9 +811,27 @@ int main (int argc, char *argv[])
 							dnd_message(&e.xclient);
 						}
 						break;
+
+					default:
+						if (e.type == XDamageNotify+damage_event) {
+							// union needed to avoid strict-aliasing warnings by gcc
+							union { XEvent e; XDamageNotifyEvent de; } event_union = {.e=e};
+							TrayWindow *traywin;
+							GSList *l;
+							XDamageNotifyEvent* de = &event_union.de;
+							for (l = systray.list_icons; l ; l = l->next) {
+								traywin = (TrayWindow*)l->data;
+								if ( traywin->id == de->drawable && !de->more ) {
+									systray_render_icon(traywin);
+									break;
+								}
+							}
+						}
 				}
 			}
 		}
+
+		callback_timeout_expired();
 
 		switch (signal_pending) {
 		case SIGUSR1: // reload config file

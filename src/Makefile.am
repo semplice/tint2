@@ -3,7 +3,7 @@ SUBDIRS = tint2conf
 endif
 
 AM_CFLAGS += @PANGOCAIRO_CFLAGS@ @PANGO_CFLAGS@ @CAIRO_CFLAGS@ @GLIB2_CFLAGS@ @GOBJECT2_CFLAGS@ @X11_CFLAGS@ @XINERAMA_CFLAGS@ @IMLIB2_CFLAGS@
-LIBS = @PANGOCAIRO_LIBS@ @PANGO_LIBS@ @CAIRO_LIBS@ @GLIB2_LIBS@ @GOBJECT2_LIBS@ @X11_LIBS@ @XINERAMA_LIBS@ @IMLIB2_LIBS@
+LIBS = @PANGOCAIRO_LIBS@ @PANGO_LIBS@ @CAIRO_LIBS@ @GLIB2_LIBS@ @GOBJECT2_LIBS@ @X11_LIBS@ @XINERAMA_LIBS@ @IMLIB2_LIBS@ -lrt
 INCLUDES = -Iutil -Iclock -Itaskbar -Isystray -Itooltip
 
 bin_PROGRAMS = tint2
@@ -31,7 +31,8 @@ tint2_SOURCES = config.c \
 				taskbar/taskbar.h \
 				taskbar/task.h \
 				tooltip/tooltip.c \
-				tooltip/tooltip.h
+				tooltip/tooltip.h \
+				version.h
 
 if ENABLE_BATTERY
 DEFS += -DENABLE_BATTERY
