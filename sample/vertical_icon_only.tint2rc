@@ -31,6 +31,8 @@ panel_padding = 2 0
 font_shadow = 0
 panel_background_id = 0
 wm_menu = 0
+panel_dock = 0
+panel_layer = bottom
 
 #---------------------------------------------
 # TASKBAR
@@ -62,6 +64,7 @@ systray = 1
 systray_padding = 2 8 0
 systray_background_id = 1
 systray_sort = left2right
+systray_icon_size = 0
 
 #---------------------------------------------
 # CLOCK
@@ -76,11 +79,15 @@ clock_background_id = 1
 #clock_lclick_command = xclock
 #clock_rclick_command = orage
 #clock_tooltip = %A %d %B
+#time1_timezone = :US/Hawaii
+#time2_timezone = :Europe/Berlin
+#clock_tooltip_timezone = :/usr/share/zoneinfo/Europe/Paris
 
 #---------------------------------------------
 # BATTERY
 #---------------------------------------------
-battery = 0
+battery = 1
+battery_hide = 98
 battery_low_status = 10
 battery_low_cmd = notify-send "battery low"
 bat1_font = sans 8
@@ -107,3 +114,13 @@ mouse_middle = none
 mouse_right = close
 mouse_scroll_up = toggle
 mouse_scroll_down = iconify
+
+#---------------------------------------------
+# AUTOHIDE OPTIONS
+#---------------------------------------------
+autohide = 0
+autohide_show_timeout = 0.3
+autohide_hide_timeout = 2
+autohide_height = 4
+strut_policy = minimum
+

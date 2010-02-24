@@ -18,10 +18,9 @@
 #ifndef TOOLTIP_H
 #define TOOLTIP_H
 
-#include <sys/time.h>
-
 #include "task.h"
 #include "panel.h"
+#include "timer.h"
 
 
 typedef struct {
@@ -29,18 +28,16 @@ typedef struct {
 	char* tooltip_text;
 	Panel* panel;
 	Window window;
-	struct timespec show_timeout;
-	struct timespec hide_timeout;
+	int show_timeout_msec;
+	int hide_timeout_msec;
 	Bool enabled;
 	Bool mapped;
 	int paddingx;
 	int paddingy;
 	PangoFontDescription* font_desc;
-	config_color font_color;
-	Color background_color;
-	Border border;
-	int show_timer_id;
-	int hide_timer_id;
+	Color font_color;
+	Background* bg;
+	timeout* timeout;
 } Tooltip;
 
 extern Tooltip g_tooltip;
@@ -48,9 +45,10 @@ extern Tooltip g_tooltip;
 void init_tooltip();
 void cleanup_tooltip();
 void tooltip_trigger_show(Area* area, Panel* p, int x, int y);
-void tooltip_show();
+void tooltip_show(void* /*arg*/);
 void tooltip_update();
 void tooltip_trigger_hide();
-void tooltip_hide();
+void tooltip_hide(void* /*arg*/);
+void tooltip_copy_text(Area* area);
 
 #endif // TOOLTIP_H

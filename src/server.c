@@ -18,6 +18,8 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 **************************************************************************/
 
+#include <X11/extensions/Xrender.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,8 +30,7 @@
 
 void server_catch_error (Display *d, XErrorEvent *ev){}
 
-static char *name_trayer = 0;
-
+int real_transparency = 0;
 
 void server_init_atoms ()
 {
@@ -57,7 +58,9 @@ void server_init_atoms ()
 	server.atom._NET_WM_STATE_MAXIMIZED_VERT = XInternAtom (server.dsp, "_NET_WM_STATE_MAXIMIZED_VERT", False);
 	server.atom._NET_WM_STATE_MAXIMIZED_HORZ = XInternAtom (server.dsp, "_NET_WM_STATE_MAXIMIZED_HORZ", False);
 	server.atom._NET_WM_STATE_SHADED = XInternAtom (server.dsp, "_NET_WM_STATE_SHADED", False);
+	server.atom._NET_WM_STATE_HIDDEN = XInternAtom (server.dsp, "_NET_WM_STATE_HIDDEN", False);
 	server.atom._NET_WM_STATE_BELOW = XInternAtom (server.dsp, "_NET_WM_STATE_BELOW", False);
+	server.atom._NET_WM_STATE_ABOVE = XInternAtom (server.dsp, "_NET_WM_STATE_ABOVE", False);
 	server.atom._NET_WM_STATE_MODAL = XInternAtom (server.dsp, "_NET_WM_STATE_MODAL", False);
 	server.atom._NET_CLIENT_LIST = XInternAtom (server.dsp, "_NET_CLIENT_LIST", False);
 	server.atom._NET_WM_VISIBLE_NAME = XInternAtom (server.dsp, "_NET_WM_VISIBLE_NAME", False);
@@ -67,6 +70,7 @@ void server_init_atoms ()
 	server.atom._NET_CLOSE_WINDOW = XInternAtom (server.dsp, "_NET_CLOSE_WINDOW", False);
 	server.atom.UTF8_STRING = XInternAtom (server.dsp, "UTF8_STRING", False);
 	server.atom._NET_SUPPORTING_WM_CHECK = XInternAtom (server.dsp, "_NET_SUPPORTING_WM_CHECK", False);
+	server.atom._NET_WM_CM_S0 = XInternAtom (server.dsp, "_NET_WM_CM_S0", False);
 	server.atom._NET_SUPPORTING_WM_CHECK = XInternAtom (server.dsp, "_NET_WM_NAME", False);
 	server.atom._NET_WM_STRUT_PARTIAL = XInternAtom (server.dsp, "_NET_WM_STRUT_PARTIAL", False);
 	server.atom.WM_NAME = XInternAtom(server.dsp, "WM_NAME", False);
@@ -75,7 +79,7 @@ void server_init_atoms ()
 	server.atom.WM_HINTS = XInternAtom(server.dsp, "WM_HINTS", False);
 
 	// systray protocol
-	name_trayer = g_strdup_printf("_NET_SYSTEM_TRAY_S%d", DefaultScreen(server.dsp));
+	char *name_trayer = g_strdup_printf("_NET_SYSTEM_TRAY_S%d", DefaultScreen(server.dsp));
 	server.atom._NET_SYSTEM_TRAY_SCREEN = XInternAtom(server.dsp, name_trayer, False);
 	server.atom._NET_SYSTEM_TRAY_OPCODE = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_OPCODE", False);
 	server.atom.MANAGER = XInternAtom(server.dsp, "MANAGER", False);
@@ -83,17 +87,24 @@ void server_init_atoms ()
 	server.atom._NET_SYSTEM_TRAY_ORIENTATION = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_ORIENTATION", False);
 	server.atom._XEMBED = XInternAtom(server.dsp, "_XEMBED", False);
 	server.atom._XEMBED_INFO = XInternAtom(server.dsp, "_XEMBED_INFO", False);
+	g_free(name_trayer);
 
 	// drag 'n' drop
 	server.atom.XdndAware = XInternAtom(server.dsp, "XdndAware", False);
 	server.atom.XdndPosition = XInternAtom(server.dsp, "XdndPosition", False);
 	server.atom.XdndStatus = XInternAtom(server.dsp, "XdndStatus", False);
+
+	server.colormap = 0;
+	server.monitor = 0;
+	server.gc = 0;
 }
 
 
 void cleanup_server()
 {
-	if (name_trayer) free(name_trayer);
+	if (server.colormap) XFreeColormap(server.dsp, server.colormap);
+	if (server.monitor) free(server.monitor);
+	if (server.gc) XFreeGC(server.dsp, server.gc);
 }
 
 
@@ -299,3 +310,49 @@ void get_desktops()
 }
 
 
+void server_init_visual()
+{
+	// inspired by freedesktops fdclock ;)
+	XVisualInfo *xvi;
+	XVisualInfo templ = { .screen=server.screen, .depth=32, .class=TrueColor };
+	int nvi;
+	xvi = XGetVisualInfo(server.dsp, VisualScreenMask|VisualDepthMask|VisualClassMask, &templ, &nvi);
+
+	Visual *visual = 0;
+	if (xvi) {
+		int i;
+		XRenderPictFormat *format;
+		for (i = 0; i < nvi; i++) {
+			format = XRenderFindVisualFormat(server.dsp, xvi[i].visual);
+			if (format->type == PictTypeDirect && format->direct.alphaMask) {
+				visual = xvi[i].visual;
+				break;
+			}
+		}
+	}
+	XFree (xvi);
+
+	// check composite manager
+	server.composite_manager = XGetSelectionOwner(server.dsp, server.atom._NET_WM_CM_S0);
+	if (server.colormap)
+		XFreeColormap(server.dsp, server.colormap);
+
+	if (visual && server.composite_manager != None) {
+		XSetWindowAttributes attrs;
+		attrs.event_mask = StructureNotifyMask;
+		XChangeWindowAttributes (server.dsp, server.composite_manager, CWEventMask, &attrs);
+
+		real_transparency = 1;
+		server.depth = 32;
+		printf("real transparency on... depth: %d\n", server.depth);
+		server.colormap = XCreateColormap(server.dsp, server.root_win, visual, AllocNone);
+		server.visual = visual;
+	}
+	else {
+		real_transparency = 0;
+		server.depth = DefaultDepth(server.dsp, server.screen);
+		printf("real transparency off.... depth: %d\n", server.depth);
+		server.colormap = DefaultColormap(server.dsp, server.screen);
+		server.visual = DefaultVisual(server.dsp, server.screen);
+	}
+}

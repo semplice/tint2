@@ -24,6 +24,7 @@
 #include <pango/pangocairo.h>
 #include <unistd.h>
 #include <signal.h>
+#include <stdlib.h>
 
 #include "window.h"
 #include "server.h"
@@ -35,8 +36,11 @@
 
 
 char *time1_format=0;
+char *time1_timezone=0;
 char *time2_format=0;
+char *time2_timezone=0;
 char *time_tooltip_format=0;
+char *time_tooltip_timezone=0;
 char *clock_lclick_command=0;
 char *clock_rclick_command=0;
 struct timeval time_clock;
@@ -46,9 +50,10 @@ static char buf_time[40];
 static char buf_date[40];
 static char buf_tooltip[40];
 int clock_enabled;
+static timeout* clock_timeout=0;
 
 
-void update_clocks()
+void update_clocks(void* arg)
 {
 	gettimeofday(&time_clock, 0);
 	int i;
@@ -59,20 +64,32 @@ void update_clocks()
 	panel_refresh = 1;
 }
 
+struct tm* clock_gettime_for_tz(const char* timezone) {
+	if (timezone) {
+		const char* old_tz = getenv("TZ");
+		setenv("TZ", timezone, 1);
+		struct tm* result = localtime(&time_clock.tv_sec);
+		if (old_tz) setenv("TZ", old_tz, 1);
+		else unsetenv("TZ");
+		return result;
+	}
+	else return localtime(&time_clock.tv_sec);
+}
 
 const char* clock_get_tooltip(void* obj)
 {
-	strftime(buf_tooltip, sizeof(buf_tooltip), time_tooltip_format, localtime(&time_clock.tv_sec));
+	strftime(buf_tooltip, sizeof(buf_tooltip), time_tooltip_format, clock_gettime_for_tz(time_tooltip_timezone));
 	return buf_tooltip;
 }
 
 
 void init_clock()
 {
-	if(time1_format) {
+	if(time1_format && clock_timeout==0) {
 		if (strchr(time1_format, 'S') || strchr(time1_format, 'T') || strchr(time1_format, 'r'))
-			install_timer(0, 1000000, 1, 0, update_clocks);
-		else install_timer(0, 1000000, 60, 0, update_clocks);
+			clock_timeout = add_timeout(10, 1000, update_clocks, 0);
+		else
+			clock_timeout = add_timeout(10, 60000, update_clocks, 0);
 	}
 }
 
@@ -91,29 +108,29 @@ void init_clock_panel(void *p)
 	clock->area.redraw = 1;
 	clock->area.on_screen = 1;
 
-	strftime(buf_time, sizeof(buf_time), time1_format, localtime(&time_clock.tv_sec));
+	strftime(buf_time, sizeof(buf_time), time1_format, clock_gettime_for_tz(time1_timezone));
 	get_text_size(time1_font_desc, &time_height_ink, &time_height, panel->area.height, buf_time, strlen(buf_time));
 	if (time2_format) {
-		strftime(buf_date, sizeof(buf_date), time2_format, localtime(&time_clock.tv_sec));
+		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
 		get_text_size(time2_font_desc, &date_height_ink, &date_height, panel->area.height, buf_date, strlen(buf_date));
 	}
 
 	if (panel_horizontal) {
 		// panel horizonal => fixed height and posy
-		clock->area.posy = panel->area.pix.border.width + panel->area.paddingy;
+		clock->area.posy = panel->area.bg->border.width + panel->area.paddingy;
 		clock->area.height = panel->area.height - (2 * clock->area.posy);
 	}
 	else {
 		// panel vertical => fixed width, height, posy and posx
-		clock->area.posy = panel->area.pix.border.width + panel->area.paddingxlr;
+		clock->area.posy = panel->area.bg->border.width + panel->area.paddingxlr;
 		clock->area.height = (2 * clock->area.paddingxlr) + (time_height + date_height);
-		clock->area.posx = panel->area.pix.border.width + panel->area.paddingy;
-		clock->area.width = panel->area.width - (2 * panel->area.pix.border.width) - (2 * panel->area.paddingy);
+		clock->area.posx = panel->area.bg->border.width + panel->area.paddingy;
+		clock->area.width = panel->area.width - (2 * panel->area.bg->border.width) - (2 * panel->area.paddingy);
 	}
 
 	clock->time1_posy = (clock->area.height - time_height) / 2;
 	if (time2_format) {
-		strftime(buf_date, sizeof(buf_date), time2_format, localtime(&time_clock.tv_sec));
+		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
 		get_text_size(time2_font_desc, &date_height_ink, &date_height, panel->area.height, buf_date, strlen(buf_date));
 
 		clock->time1_posy -= ((date_height_ink + 2) / 2);
@@ -122,7 +139,7 @@ void init_clock_panel(void *p)
 
 	if (time_tooltip_format) {
 		clock->area._get_tooltip_text = clock_get_tooltip;
-		strftime(buf_tooltip, sizeof(buf_tooltip), time_tooltip_format, localtime(&time_clock.tv_sec));
+		strftime(buf_tooltip, sizeof(buf_tooltip), time_tooltip_format, clock_gettime_for_tz(time_tooltip_timezone));
 	}
 }
 
@@ -134,23 +151,22 @@ void cleanup_clock()
 		pango_font_description_free(time1_font_desc);
 	if (time2_font_desc)
 		pango_font_description_free(time2_font_desc);
-	if (time1_format)
-		g_free(time1_format);
-	if (time2_format)
-		g_free(time2_format);
-	if (time_tooltip_format)
-		g_free(time_tooltip_format);
-	if (clock_lclick_command)
-		g_free(clock_lclick_command);
-	if (clock_rclick_command)
-		g_free(clock_rclick_command);
+	g_free(time1_format);
+	g_free(time2_format);
+	g_free(time_tooltip_format);
+	g_free(time1_timezone);
+	g_free(time2_timezone);
+	g_free(time_tooltip_timezone);
+	g_free(clock_lclick_command);
+	g_free(clock_rclick_command);
 	time1_font_desc = time2_font_desc = 0;
-	time1_format = time2_format = 0;
+	time1_format = time2_format = time_tooltip_format = 0;
+	time1_timezone = time2_timezone = time_tooltip_timezone = 0;
 	clock_lclick_command = clock_rclick_command = 0;
 }
 
 
-void draw_clock (void *obj, cairo_t *c, int active)
+void draw_clock (void *obj, cairo_t *c)
 {
 	Clock *clock = obj;
 	PangoLayout *layout;
@@ -192,9 +208,9 @@ void resize_clock (void *obj)
 
 	clock->area.redraw = 1;
 	time_width = date_width = 0;
-	strftime(buf_time, sizeof(buf_time), time1_format, localtime(&time_clock.tv_sec));
+	strftime(buf_time, sizeof(buf_time), time1_format, clock_gettime_for_tz(time1_timezone));
 	if (time2_format)
-		strftime(buf_date, sizeof(buf_date), time2_format, localtime(&time_clock.tv_sec));
+		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
 
 	// vertical panel doen't adjust width
 	if (!panel_horizontal) return;
@@ -223,10 +239,10 @@ void resize_clock (void *obj)
 
 	if (time_width > date_width) new_width = time_width;
 	else new_width = date_width;
-	new_width += (2*clock->area.paddingxlr) + (2*clock->area.pix.border.width);
+	new_width += (2*clock->area.paddingxlr) + (2*clock->area.bg->border.width);
 
 	Panel *panel = ((Area*)obj)->panel;
-	clock->area.posx = panel->area.width - clock->area.width - panel->area.paddingxlr - panel->area.pix.border.width;
+	clock->area.posx = panel->area.width - clock->area.width - panel->area.paddingxlr - panel->area.bg->border.width;
 
 	if (new_width > clock->area.width || new_width < (clock->area.width-6)) {
 		// resize clock
@@ -266,9 +282,9 @@ void clock_action(int button)
 		pid = fork();
 		if (pid == 0) {
 			// change for the fork the signal mask
-			sigset_t sigset;
-			sigprocmask(SIG_SETMASK, &sigset, 0);
-			sigprocmask(SIG_UNBLOCK, &sigset, 0);
+//			sigset_t sigset;
+//			sigprocmask(SIG_SETMASK, &sigset, 0);
+//			sigprocmask(SIG_UNBLOCK, &sigset, 0);
 			execl("/bin/sh", "/bin/sh", "-c", command, NULL);
 			_exit(0);
 		}
