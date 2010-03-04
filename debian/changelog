@@ -1,3 +1,11 @@
+tint2 (0.9-2) unstable; urgency=low
+
+  * debian/patches/update-systray-clock-every-second.diff: Cherry-pick
+    patch from upstream to keep systray clock in sync with system time.
+    (Closes: #572227)
+
+ -- Daniel Moerner <dmoerner@gmail.com>  Wed, 03 Mar 2010 23:40:02 -0800
+
 tint2 (0.9-1) unstable; urgency=low
 
   * New Upstream Version
