@@ -1,16 +1,29 @@
 Source: tint2
 Section: x11
 Priority: optional
-Maintainer: Daniel Moerner <dmoerner@gmail.com>
-Build-Depends: debhelper (>= 7.0.50), libcairo2-dev, libpango1.0-dev, libglib2.0-dev, libimlib2-dev, libxinerama-dev, libxrandr-dev, libxcomposite-dev, libxdamage-dev
-Standards-Version: 3.8.4
+Maintainer: Sebastian Reichel <elektranox@gmail.com>
+DM-Upload-Allowed: yes
+Build-Depends: cmake,
+               debhelper (>= 7.0.50),
+               libcairo2-dev,
+               libglib2.0-dev,
+               libgtk2.0-dev,
+               libimlib2-dev,
+               libpango1.0-dev,
+               libxcomposite-dev,
+               libxdamage-dev,
+               libxinerama-dev,
+               libxrandr-dev
+Standards-Version: 3.9.1
 Vcs-Git: git://git.debian.org/git/collab-maint/tint2.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/tint2.git
 Homepage: http://code.google.com/p/tint2/
 
 Package: tint2
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends},
+         ${misc:Depends},
+         python
 Description: lightweight taskbar
  Tint is a simple panel/taskbar intentionally made for openbox3, but should
  also work with other window managers. The taskbar includes transparency and 

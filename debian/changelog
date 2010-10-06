@@ -1,3 +1,17 @@
+tint2 (0.11-1) UNRELEASED; urgency=low
+
+  * Make me the maintainer of this package (Closes: #598688)
+  * New Upstream Version (Closes: #591008)
+  * drop patch (applied upstream)
+  * Update watch file
+    + use googlecode.debian.net
+    + new files are release as tar.bz2
+  * Update Debian Standards Version to 3.9.1
+  * Use DEP5 for debian/copyright
+  * Added build dependencies: cmake, libgtk2.0-dev
+
+ -- Sebastian Reichel <elektranox@gmail.com>  Wed, 06 Oct 2010 22:13:06 +0200
+
 tint2 (0.9-2) unstable; urgency=low
 
   * debian/patches/update-systray-clock-every-second.diff: Cherry-pick
