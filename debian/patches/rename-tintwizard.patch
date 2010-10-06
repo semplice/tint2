@@ -1,0 +1,19 @@
+Description: correct tintwizard path
+ tintwizard is installed as /usr/bin/tintwizard instead of
+ /usr/bin/tintwizard.py in Debian.
+Author: Sebastian Reichel <elektranox@gmail.com>
+Forwarded: not-needed
+
+Index: tint2/src/tint2conf/main.c
+===================================================================
+--- tint2.orig/src/tint2conf/main.c	2010-10-07 00:01:35.000000000 +0200
++++ tint2/src/tint2conf/main.c	2010-10-07 00:01:44.000000000 +0200
+@@ -580,7 +580,7 @@
+ 	}
+ 	g_width = 500;
+ 	g_height = 350;
+-	g_cmd_property = g_strconcat( "python ", INSTALL_PREFIX, "/bin/tintwizard.py", (void*)0 );
++	g_cmd_property = g_strconcat( "python ", INSTALL_PREFIX, "/bin/tintwizard", (void*)0 );
+ 
+ 	// load config
+ 	path = g_build_filename (g_get_user_config_dir(), "tint2", "tint2confrc", NULL);

@@ -3,7 +3,7 @@
 %:
 	dh $@
 
-# Upstream ships an empty NEWS file; remove it to quiet lintian.
+# rename tintwizard.py to tintwizard
 override_dh_auto_install:
 	dh_auto_install
-	rm -f debian/tint2/usr/share/doc/tint2/NEWS
+	mv debian/tint2/usr/bin/tintwizard.py debian/tint2/usr/bin/tintwizard
