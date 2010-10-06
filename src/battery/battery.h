@@ -57,13 +57,17 @@ extern int8_t battery_low_status;
 extern char *battery_low_cmd;
 extern char *path_energy_now, *path_energy_full, *path_current_now, *path_status;
 
+// default global data
+void default_battery();
+
+// freed memory
+void cleanup_battery();
 
 // initialize clock : y position, ...
 void update_battery();
 
 void init_battery();
 void init_battery_panel(void *panel);
-void cleanup_battery();
 
 void draw_battery(void *obj, cairo_t *c);
 

@@ -42,8 +42,14 @@ typedef struct {
 
 extern Tooltip g_tooltip;
 
-void init_tooltip();
+
+// default global data
+void default_tooltip();
+
+// freed memory
 void cleanup_tooltip();
+
+void init_tooltip();
 void tooltip_trigger_show(Area* area, Panel* p, int x, int y);
 void tooltip_show(void* /*arg*/);
 void tooltip_update();

@@ -37,7 +37,10 @@
    element. However for omnipresent windows (windows which are visible in every taskbar) the array
    contains to every Task* on each panel a pointer (i.e. GPtrArray.len == server.nb_desktop)
 */
-GHashTable* win_to_task_table = 0;
+GHashTable* win_to_task_table;
+
+Task *task_active;
+Task *task_drag;
 
 guint win_hash(gconstpointer key) { return (guint)*((Window*)key); }
 gboolean win_compare(gconstpointer a, gconstpointer b) { return (*((Window*)a) == *((Window*)b)); }
@@ -51,6 +54,9 @@ void init_taskbar()
 	if (win_to_task_table == 0)
 		win_to_task_table = g_hash_table_new_full(win_hash, win_compare, free, free_ptr_array);
 
+	task_active = 0;
+	task_drag = 0;
+
 	for (i=0 ; i < nb_panel ; i++) {
 		panel = &panel1[i];
 
@@ -58,6 +64,15 @@ void init_taskbar()
 			free(panel->taskbar);
 			panel->taskbar = 0;
 		}
+
+		if (panel->g_taskbar.bg == 0) {
+			panel->g_taskbar.bg = &g_array_index(backgrounds, Background, 0);
+			panel->g_taskbar.area.bg = panel->g_taskbar.bg;
+		}
+		if (panel->g_taskbar.bg_active == 0)
+			panel->g_taskbar.bg_active = panel->g_taskbar.bg;
+		if (panel->g_task.area.bg == 0)
+			panel->g_task.area.bg = &g_array_index(backgrounds, Background, 0);
 
 		// taskbar
 		panel->g_taskbar.area._resize = resize_taskbar;
@@ -76,6 +91,11 @@ void init_taskbar()
 		panel->g_task.area._draw_foreground = draw_task;
 		panel->g_task.area.redraw = 1;
 		panel->g_task.area.on_screen = 1;
+		if ((panel->g_task.config_asb_mask & (1<<TASK_NORMAL)) == 0) {
+			panel->g_task.alpha[TASK_NORMAL] = 100;
+			panel->g_task.saturation[TASK_NORMAL] = 0;
+			panel->g_task.brightness[TASK_NORMAL] = 0;
+		}
 		if ((panel->g_task.config_asb_mask & (1<<TASK_ACTIVE)) == 0) {
 			panel->g_task.alpha[TASK_ACTIVE] = panel->g_task.alpha[TASK_NORMAL];
 			panel->g_task.saturation[TASK_ACTIVE] = panel->g_task.saturation[TASK_NORMAL];
@@ -91,9 +111,11 @@ void init_taskbar()
 			panel->g_task.saturation[TASK_URGENT] = panel->g_task.saturation[TASK_ACTIVE];
 			panel->g_task.brightness[TASK_URGENT] = panel->g_task.brightness[TASK_ACTIVE];
 		}
+		if ((panel->g_task.config_font_mask & (1<<TASK_NORMAL)) == 0) panel->g_task.font[TASK_NORMAL] = (Color){{0, 0, 0}, 0};
 		if ((panel->g_task.config_font_mask & (1<<TASK_ACTIVE)) == 0) panel->g_task.font[TASK_ACTIVE] = panel->g_task.font[TASK_NORMAL];
 		if ((panel->g_task.config_font_mask & (1<<TASK_ICONIFIED)) == 0) panel->g_task.font[TASK_ICONIFIED] = panel->g_task.font[TASK_NORMAL];
 		if ((panel->g_task.config_font_mask & (1<<TASK_URGENT)) == 0) panel->g_task.font[TASK_URGENT] = panel->g_task.font[TASK_ACTIVE];
+		if ((panel->g_task.config_font_mask & (1<<TASK_NORMAL)) == 0) panel->g_task.background[TASK_NORMAL] = &g_array_index(backgrounds, Background, 0);
 		if ((panel->g_task.config_background_mask & (1<<TASK_ACTIVE)) == 0) panel->g_task.background[TASK_ACTIVE] = panel->g_task.background[TASK_NORMAL];
 		if ((panel->g_task.config_background_mask & (1<<TASK_ICONIFIED)) == 0) panel->g_task.background[TASK_ICONIFIED] = panel->g_task.background[TASK_NORMAL];
 		if ((panel->g_task.config_background_mask & (1<<TASK_URGENT)) == 0) panel->g_task.background[TASK_URGENT] = panel->g_task.background[TASK_ACTIVE];
@@ -111,7 +133,7 @@ void init_taskbar()
 		int k;
 		for (k=0; k<TASK_STATE_COUNT; ++k) {
 			if (panel->g_task.background[k]->border.rounded > panel->g_task.area.height/2) {
-				printf("task%sbackground_id is too big. Please fix your tint2rc\n", k==0 ? "_" : k==1 ? "_active_" : k==2 ? "_iconified_" : "_urgent_");
+				printf("task%sbackground_id has a too large rounded value. Please fix your tint2rc\n", k==0 ? "_" : k==1 ? "_active_" : k==2 ? "_iconified_" : "_urgent_");
 				g_array_append_val(backgrounds, *panel->g_task.background[k]);
 				panel->g_task.background[k] = &g_array_index(backgrounds, Background, backgrounds->len-1);
 				panel->g_task.background[k]->border.rounded = panel->g_task.area.height/2;
@@ -126,7 +148,7 @@ void init_taskbar()
 			panel->g_task.maximum_width = server.monitor[panel->monitor].width;
 
 		panel->g_task.text_posx = panel->g_task.background[0]->border.width + panel->g_task.area.paddingxlr;
-		panel->g_task.text_posy = (panel->g_task.area.height - height) / 2.0;
+		panel->g_task.text_height = panel->g_task.area.height - (2 * panel->g_task.area.paddingy);
 		if (panel->g_task.icon) {
 			panel->g_task.icon_size1 = panel->g_task.area.height - (2 * panel->g_task.area.paddingy);
 			panel->g_task.text_posx += panel->g_task.icon_size1;
@@ -150,7 +172,18 @@ void init_taskbar()
 	}
 }
 
-void taskbar_remove_task(gpointer key, gpointer value, gpointer user_data) {remove_task(task_get_task(*(Window*)key)); }
+void taskbar_remove_task(gpointer key, gpointer value, gpointer user_data)
+{
+	remove_task(task_get_task(*(Window*)key));
+}
+
+void default_taskbar()
+{
+	win_to_task_table = 0;
+	urgent_timeout = 0;
+	urgent_list = 0;
+}
+
 void cleanup_taskbar()
 {
 	Panel *panel;
@@ -191,7 +224,10 @@ Task *task_get_task (Window win)
 
 GPtrArray* task_get_tasks(Window win)
 {
-	return g_hash_table_lookup(win_to_task_table, &win);
+	if (win_to_task_table)
+		return g_hash_table_lookup(win_to_task_table, &win);
+	else
+		return 0;
 }
 
 
@@ -202,10 +238,6 @@ void task_refresh_tasklist ()
 
 	win = server_get_property (server.root_win, server.atom._NET_CLIENT_LIST, XA_WINDOW, &num_results);
 	if (!win) return;
-
-	// Remove any old and set active win
-	// remark from Andreas: This seems unneccessary...
-//	active_task();
 
 	GList* win_list = g_hash_table_get_keys(win_to_task_table);
 	GList* it;
@@ -270,6 +302,9 @@ void resize_taskbar(void *obj)
 			tsk->area.posx = x;
 			set_task_redraw(tsk);  // always redraw task, because the background could have changed (taskbar_active_id)
 			tsk->area.width = pixel_width;
+			long value[] = { panel->posx+x, panel->posy, pixel_width, panel->area.height };
+			XChangeProperty (server.dsp, tsk->win, server.atom._NET_WM_ICON_GEOMETRY, XA_CARDINAL, 32, PropModeReplace, (unsigned char*)value, 4);
+
 			if (modulo_width) {
 				tsk->area.width++;
 				modulo_width--;
@@ -308,6 +343,9 @@ void resize_taskbar(void *obj)
 			tsk->area.posy = y;
 			set_task_redraw(tsk);  // always redraw task, because the background could have changed (taskbar_active_id)
 			tsk->area.height = pixel_height;
+			long value[] = { panel->posx, panel->posy+y, panel->area.width, pixel_height };
+			XChangeProperty (server.dsp, tsk->win, server.atom._NET_WM_ICON_GEOMETRY, XA_CARDINAL, 32, PropModeReplace, (unsigned char*)value, 4);
+
 			if (modulo_height) {
 				tsk->area.height++;
 				modulo_height--;

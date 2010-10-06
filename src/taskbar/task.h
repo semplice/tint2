@@ -11,9 +11,12 @@
 #include <pango/pangocairo.h>
 #include <Imlib2.h>
 #include "common.h"
+#include "timer.h"
 
 
 enum { TASK_NORMAL, TASK_ACTIVE, TASK_ICONIFIED, TASK_URGENT, TASK_STATE_COUNT };
+extern timeout* urgent_timeout;
+extern GSList* urgent_list;
 
 // --------------------------------------------------
 // global task parameter
@@ -35,7 +38,7 @@ typedef struct {
 	Background* background[TASK_STATE_COUNT];
 	int config_background_mask;
 	// starting position for text ~ task_padding + task_border + icon_size
-	double text_posx, text_posy;
+	double text_posx, text_height;
 
 	int font_shadow;
 	PangoFontDescription *font_desc;

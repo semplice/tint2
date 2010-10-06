@@ -19,18 +19,19 @@
 **************************************************************************/
 
 #include <X11/extensions/Xrender.h>
+#include <X11/extensions/Xrandr.h>
+
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "server.h"
+#include "config.h"
 #include "task.h"
 #include "window.h"
 
 void server_catch_error (Display *d, XErrorEvent *ev){}
-
-int real_transparency = 0;
 
 void server_init_atoms ()
 {
@@ -67,6 +68,7 @@ void server_init_atoms ()
 	server.atom._NET_WM_NAME = XInternAtom (server.dsp, "_NET_WM_NAME", False);
 	server.atom._NET_WM_STRUT = XInternAtom (server.dsp, "_NET_WM_STRUT", False);
 	server.atom._NET_WM_ICON = XInternAtom (server.dsp, "_NET_WM_ICON", False);
+	server.atom._NET_WM_ICON_GEOMETRY = XInternAtom(server.dsp, "_NET_WM_ICON_GEOMETRY", False );
 	server.atom._NET_CLOSE_WINDOW = XInternAtom (server.dsp, "_NET_CLOSE_WINDOW", False);
 	server.atom.UTF8_STRING = XInternAtom (server.dsp, "UTF8_STRING", False);
 	server.atom._NET_SUPPORTING_WM_CHECK = XInternAtom (server.dsp, "_NET_SUPPORTING_WM_CHECK", False);
@@ -93,17 +95,21 @@ void server_init_atoms ()
 	server.atom.XdndAware = XInternAtom(server.dsp, "XdndAware", False);
 	server.atom.XdndPosition = XInternAtom(server.dsp, "XdndPosition", False);
 	server.atom.XdndStatus = XInternAtom(server.dsp, "XdndStatus", False);
-
-	server.colormap = 0;
-	server.monitor = 0;
-	server.gc = 0;
+	server.atom.XdndLeave = XInternAtom(server.dsp, "XdndLeave", False);
 }
 
 
 void cleanup_server()
 {
 	if (server.colormap) XFreeColormap(server.dsp, server.colormap);
-	if (server.monitor) free(server.monitor);
+	if (server.colormap32) XFreeColormap(server.dsp, server.colormap32);
+	if (server.monitor) {
+		int i;
+		for (i=0; i<server.nb_monitor; ++i)
+			if (server.monitor[i].names)
+				g_strfreev(server.monitor[i].names);
+		free(server.monitor);
+	}
 	if (server.gc) XFreeGC(server.dsp, server.gc);
 }
 
@@ -244,42 +250,68 @@ int compareMonitorIncluded(const void *monitor1, const void *monitor2)
 
 void get_monitors()
 {
-	if (server.monitor) free(server.monitor);
-	server.nb_monitor = 0;
-	server.monitor = 0;
-
 	int i, j, nbmonitor;
 	if (XineramaIsActive(server.dsp)) {
 		XineramaScreenInfo *info = XineramaQueryScreens(server.dsp, &nbmonitor);
+		XRRScreenResources *res = XRRGetScreenResourcesCurrent(server.dsp, server.root_win);
 
-		if (info && nbmonitor > 0) {
+		if (res && res->ncrtc >= nbmonitor) {
+			// use xrandr to identify monitors (does not work with proprietery nvidia drivers)
+			printf("xRandr: Found crtc's: %d\n", res->ncrtc );
+			server.monitor = malloc(res->ncrtc * sizeof(Monitor));
+			for (i=0; i<res->ncrtc; ++i) {
+				XRRCrtcInfo* crtc_info = XRRGetCrtcInfo(server.dsp, res, res->crtcs[i]);
+				server.monitor[i].x = crtc_info->x;
+				server.monitor[i].y = crtc_info->y;
+				server.monitor[i].width = crtc_info->width;
+				server.monitor[i].height = crtc_info->height;
+				server.monitor[i].names = malloc((crtc_info->noutput+1) * sizeof(char*));
+				for (j=0; j<crtc_info->noutput; ++j) {
+					XRROutputInfo* output_info = XRRGetOutputInfo(server.dsp, res, crtc_info->outputs[j]);
+					printf("xRandr: Linking output %s with crtc %d\n", output_info->name, i);
+					server.monitor[i].names[j] = g_strdup(output_info->name);
+					XRRFreeOutputInfo(output_info);
+				}
+				server.monitor[i].names[j] = 0;
+				XRRFreeCrtcInfo(crtc_info);
+			}
+			nbmonitor = res->ncrtc;
+		}
+		else if (info && nbmonitor > 0) {
 			server.monitor = malloc(nbmonitor * sizeof(Monitor));
 			for (i=0 ; i < nbmonitor ; i++) {
 				server.monitor[i].x = info[i].x_org;
 				server.monitor[i].y = info[i].y_org;
 				server.monitor[i].width = info[i].width;
 				server.monitor[i].height = info[i].height;
+				server.monitor[i].names = 0;
 			}
-			XFree(info);
-
-			// ordered monitor
-			qsort(server.monitor, nbmonitor, sizeof(Monitor), compareMonitorIncluded);
-
-			// remove monitor included into another one
-			i = 0;
-			while (i < nbmonitor) {
-				for (j=0; j < i ; j++) {
-					if (compareMonitorIncluded(&server.monitor[i], &server.monitor[j]) > 0) {
-						goto next;
-					}
-				}
-				i++;
-			}
-next:
-			server.nb_monitor = i;
-			server.monitor = realloc(server.monitor, server.nb_monitor * sizeof(Monitor));
-			qsort(server.monitor, server.nb_monitor, sizeof(Monitor), compareMonitorPos);
 		}
+
+		// ordered monitor
+		qsort(server.monitor, nbmonitor, sizeof(Monitor), compareMonitorIncluded);
+
+		// remove monitor included into another one
+		i = 0;
+		while (i < nbmonitor) {
+			for (j=0; j < i ; j++) {
+				if (compareMonitorIncluded(&server.monitor[i], &server.monitor[j]) > 0) {
+					goto next;
+				}
+			}
+			i++;
+		}
+next:
+		for (j=i; j<server.nb_monitor; ++j)
+			if (server.monitor[j].names)
+				g_strfreev(server.monitor[j].names);
+		server.nb_monitor = i;
+		server.monitor = realloc(server.monitor, server.nb_monitor * sizeof(Monitor));
+		qsort(server.monitor, server.nb_monitor, sizeof(Monitor), compareMonitorPos);
+
+		if (res)
+			XRRFreeScreenResources(res);
+		XFree(info);
 	}
 
 	if (!server.nb_monitor) {
@@ -288,6 +320,7 @@ next:
 		server.monitor[0].x = server.monitor[0].y = 0;
 		server.monitor[0].width = DisplayWidth (server.dsp, server.screen);
 		server.monitor[0].height = DisplayHeight (server.dsp, server.screen);
+		server.monitor[0].names = 0;
 	}
 }
 
@@ -336,20 +369,28 @@ void server_init_visual()
 	server.composite_manager = XGetSelectionOwner(server.dsp, server.atom._NET_WM_CM_S0);
 	if (server.colormap)
 		XFreeColormap(server.dsp, server.colormap);
+	if (server.colormap32)
+		XFreeColormap(server.dsp, server.colormap32);
 
-	if (visual && server.composite_manager != None) {
+	if (visual) {
+		server.visual32 = visual;
+		server.colormap32 = XCreateColormap(server.dsp, server.root_win, visual, AllocNone);
+	}
+
+	if (visual && server.composite_manager != None && snapshot_path == 0) {
 		XSetWindowAttributes attrs;
 		attrs.event_mask = StructureNotifyMask;
 		XChangeWindowAttributes (server.dsp, server.composite_manager, CWEventMask, &attrs);
 
-		real_transparency = 1;
+		server.real_transparency = 1;
 		server.depth = 32;
 		printf("real transparency on... depth: %d\n", server.depth);
 		server.colormap = XCreateColormap(server.dsp, server.root_win, visual, AllocNone);
 		server.visual = visual;
 	}
 	else {
-		real_transparency = 0;
+		// no composite manager or snapshot mode => fake transparency
+		server.real_transparency = 0;
 		server.depth = DefaultDepth(server.dsp, server.screen);
 		printf("real transparency off.... depth: %d\n", server.depth);
 		server.colormap = DefaultColormap(server.dsp, server.screen);

@@ -27,6 +27,8 @@
 #include <Imlib2.h>
 #include <X11/extensions/Xdamage.h>
 #include <X11/extensions/Xcomposite.h>
+#include <X11/extensions/Xrender.h>
+
 
 #include "systraybar.h"
 #include "server.h"
@@ -46,11 +48,34 @@ Window net_sel_win = None;
 Systraybar systray;
 int refresh_systray;
 int systray_enabled;
-int systray_max_icon_size = 0;
+int systray_max_icon_size;
 
 // background pixmap if we render ourselves the icons
-static Pixmap render_background = 0;
+static Pixmap render_background;
 
+
+void default_systray()
+{
+	memset(&systray, 0, sizeof(Systraybar));
+	render_background = 0;
+	systray.alpha = 100;
+	systray.sort = 3;
+	systray.area._draw_foreground = draw_systray;
+	systray.area._resize = resize_systray;
+}
+
+void cleanup_systray()
+{
+	stop_net();
+	systray_enabled = 0;
+	systray_max_icon_size = 0;
+	systray.area.on_screen = 0;
+	free_area(&systray.area);
+	if (render_background) {
+		XFreePixmap(server.dsp, render_background);
+		render_background = 0;
+	}
+}
 
 void init_systray()
 {
@@ -59,8 +84,11 @@ void init_systray()
 	if (!systray_enabled)
 		return;
 
-	systray.area._draw_foreground = draw_systray;
-	systray.area._resize = resize_systray;
+	if (!server.visual32 && (systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0)) {
+		printf("No 32 bit visual for your X implementation. 'systray_asb = 100 0 0' will be forced\n");
+		systray.alpha = 100;
+		systray.brightness = systray.saturation = 0;
+	}
 	systray.area.resize = 1;
 	systray.area.redraw = 1;
 	systray.area.on_screen = 1;
@@ -85,18 +113,9 @@ void init_systray_panel(void *p)
 }
 
 
-void cleanup_systray()
-{
-	systray_enabled = 0;
-	systray.area.on_screen = 0;
-	free_area(&systray.area);
-	if (render_background) XFreePixmap(server.dsp, render_background);
-}
-
-
 void draw_systray(void *obj, cairo_t *c)
 {
-	if (real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		if (render_background) XFreePixmap(server.dsp, render_background);
 		render_background = XCreatePixmap(server.dsp, server.root_win, systray.area.width, systray.area.height, server.depth);
 		XCopyArea(server.dsp, systray.area.pix, render_background, server.gc, 0, 0, systray.area.width, systray.area.height, 0, 0);
@@ -260,7 +279,11 @@ void start_net()
 	// Vertical panel will draw the systray horizontal.
 	int orient = 0;
 	XChangeProperty(server.dsp, net_sel_win, server.atom._NET_SYSTEM_TRAY_ORIENTATION, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) &orient, 1);
-	VisualID vid = XVisualIDFromVisual(server.visual);
+	VisualID vid;
+	if (server.visual32 && (systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0))
+		vid = XVisualIDFromVisual(server.visual32);
+	else
+		vid = XVisualIDFromVisual(server.visual);
 	XChangeProperty(server.dsp, net_sel_win, XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_VISUAL", False), XA_VISUALID, 32, PropModeReplace, (unsigned char*)&vid, 1);
 
 	XSetSelectionOwner(server.dsp, server.atom._NET_SYSTEM_TRAY_SCREEN, net_sel_win, CurrentTime);
@@ -347,10 +370,12 @@ gboolean add_icon(Window id)
 
 	error = FALSE;
 	XWindowAttributes attr;
-	XGetWindowAttributes(server.dsp, id, &attr);
+	if ( XGetWindowAttributes(server.dsp, id, &attr) == False ) return FALSE;
 	unsigned long mask = 0;
 	XSetWindowAttributes set_attr;
-	if (attr.depth != server.depth || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0 ) {
+	//printf("icon with depth: %d, width %d, height %d\n", attr.depth, attr.width, attr.height);
+	printf("icon with depth: %d\n", attr.depth);
+	if (attr.depth != server.depth || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		set_attr.colormap = attr.colormap;
 		set_attr.background_pixel = 0;
 		set_attr.border_pixel = 0;
@@ -429,8 +454,8 @@ gboolean add_icon(Window id)
 
 	// watch for the icon trying to resize itself!
 	XSelectInput(server.dsp, traywin->tray_id, StructureNotifyMask);
-	if (real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
-		traywin->damage = XDamageCreate(server.dsp, traywin->id, XDamageReportNonEmpty);
+	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+		traywin->damage = XDamageCreate(server.dsp, traywin->id, XDamageReportRawRectangles);
 		XCompositeRedirectWindow(server.dsp, traywin->id, CompositeRedirectManual);
 	}
 
@@ -469,6 +494,8 @@ void remove_icon(TrayWindow *traywin)
 	XDestroyWindow(server.dsp, traywin->id);
 	XSync(server.dsp, False);
 	XSetErrorHandler(old);
+	if (traywin->render_timeout)
+		stop_timeout(traywin->render_timeout);
 	g_free(traywin);
 
 	// changed in systray force resize on panel
@@ -506,6 +533,8 @@ void net_message(XClientMessageEvent *e)
 
 void systray_render_icon_now(void* t)
 {
+	// we end up in this function only in real transparency mode or if systray_task_asb != 100 0 0
+	// we made also sure, that we always have a 32 bit visual, i.e. we can safely create 32 bit pixmaps here
 	TrayWindow* traywin = t;
 	traywin->render_timeout = 0;
 
@@ -513,12 +542,41 @@ void systray_render_icon_now(void* t)
 	// We create a heuristic mask for these icons, i.e. we get the rgb value in the top left corner, and
 	// mask out all pixel with the same rgb value
 	Panel* panel = systray.area.panel;
-	imlib_context_set_drawable(traywin->id);
-	Imlib_Image image = imlib_create_image_from_drawable(0, 0, 0, traywin->width, traywin->height, 0);
+
+	// Very ugly hack, but somehow imlib2 is not able to get the image from the traywindow itself,
+	// so we first render the tray window onto a pixmap, and then we tell imlib2 to use this pixmap as
+	// drawable. If someone knows why it does not work with the traywindow itself, please tell me ;)
+	Pixmap tmp_pmap = XCreatePixmap(server.dsp, server.root_win, traywin->width, traywin->height, 32);
+	XRenderPictFormat* f;
+	if (traywin->depth == 24)
+		f = XRenderFindStandardFormat(server.dsp, PictStandardRGB24);
+	else if (traywin->depth == 32)
+		f = XRenderFindStandardFormat(server.dsp, PictStandardARGB32);
+	else {
+		printf("Strange tray icon found with depth: %d\n", traywin->depth);
+		return;
+	}
+	Picture pict_image;
+	//if (server.real_transparency)
+		//pict_image = XRenderCreatePicture(server.dsp, traywin->id, f, 0, 0);
+	// reverted Rev 407 because here it's breaking alls icon with systray + xcompmgr
+	pict_image = XRenderCreatePicture(server.dsp, traywin->tray_id, f, 0, 0);
+	Picture pict_drawable = XRenderCreatePicture(server.dsp, tmp_pmap, XRenderFindVisualFormat(server.dsp, server.visual32), 0, 0);
+	XRenderComposite(server.dsp, PictOpSrc, pict_image, None, pict_drawable, 0, 0, 0, 0, 0, 0, traywin->width, traywin->height);
+	XRenderFreePicture(server.dsp, pict_image);
+	XRenderFreePicture(server.dsp, pict_drawable);
+	// end of the ugly hack and we can continue as before
+
+	imlib_context_set_visual(server.visual32);
+	imlib_context_set_colormap(server.colormap32);
+	imlib_context_set_drawable(tmp_pmap);
+	Imlib_Image image = imlib_create_image_from_drawable(0, 0, 0, traywin->width, traywin->height, 1);
 	if (image == 0)
 		return;
 
 	imlib_context_set_image(image);
+	//if (traywin->depth == 24)
+		//imlib_save_image("/home/thil77/test.jpg");
 	imlib_image_set_has_alpha(1);
 	DATA32* data = imlib_image_get_data();
 	if (traywin->depth == 24) {
@@ -528,15 +586,12 @@ void systray_render_icon_now(void* t)
 		adjust_asb(data, traywin->width, traywin->height, systray.alpha, (float)systray.saturation/100, (float)systray.brightness/100);
 	imlib_image_put_back_data(data);
 	XCopyArea(server.dsp, render_background, systray.area.pix, server.gc, traywin->x-systray.area.posx, traywin->y-systray.area.posy, traywin->width, traywin->height, traywin->x-systray.area.posx, traywin->y-systray.area.posy);
-	if ( !real_transparency ) {
-		imlib_context_set_drawable(systray.area.pix);
-		imlib_render_image_on_drawable(traywin->x-systray.area.posx, traywin->y-systray.area.posy);
-	}
-	else {
-		render_image(systray.area.pix, traywin->x-systray.area.posx, traywin->y-systray.area.posy, traywin->width, traywin->height);
-	}
+	render_image(systray.area.pix, traywin->x-systray.area.posx, traywin->y-systray.area.posy, traywin->width, traywin->height);
 	XCopyArea(server.dsp, systray.area.pix, panel->main_win, server.gc, traywin->x-systray.area.posx, traywin->y-systray.area.posy, traywin->width, traywin->height, traywin->x, traywin->y);
 	imlib_free_image_and_decache();
+	XFreePixmap(server.dsp, tmp_pmap);
+	imlib_context_set_visual(server.visual);
+	imlib_context_set_colormap(server.colormap);
 
 	if (traywin->damage)
 		XDamageSubtract(server.dsp, traywin->damage, None, None);
@@ -546,9 +601,20 @@ void systray_render_icon_now(void* t)
 
 void systray_render_icon(TrayWindow* traywin)
 {
-	// wine tray icons update whenever mouse is over them, so we limit the updates to 50 ms
-	if (traywin->render_timeout == 0)
-		traywin->render_timeout = add_timeout(50, 0, systray_render_icon_now, traywin);
+	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+		// wine tray icons update whenever mouse is over them, so we limit the updates to 50 ms
+		if (traywin->render_timeout == 0)
+			traywin->render_timeout = add_timeout(50, 0, systray_render_icon_now, traywin);
+	}
+	else {
+		// comment by andreas: I'm still not sure, what exactly we need to do here... Somehow trayicons which do not
+		// offer the same depth as tint2 does, need to draw a background pixmap, but this cannot be done with
+		// XCopyArea... So we actually need XRenderComposite???
+//			Pixmap pix = XCreatePixmap(server.dsp, server.root_win, traywin->width, traywin->height, server.depth);
+//			XCopyArea(server.dsp, panel->temp_pmap, pix, server.gc, traywin->x, traywin->y, traywin->width, traywin->height, 0, 0);
+//			XSetWindowBackgroundPixmap(server.dsp, traywin->id, pix);
+		XClearArea(server.dsp, traywin->tray_id, 0, 0, traywin->width, traywin->height, True);
+	}
 }
 
 
@@ -559,16 +625,6 @@ void refresh_systray_icon()
 	for (l = systray.list_icons; l ; l = l->next) {
 		traywin = (TrayWindow*)l->data;
 		if (traywin->hide) continue;
-		if (real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0)
-			systray_render_icon(traywin);
-		else {
-			// comment by andreas: I'm still not sure, what exactly we need to do here... Somehow trayicons which do not
-			// offer the same depth as tint2 does, need to draw a background pixmap, but this cannot be done with
-			// XCopyArea... So we actually need XRenderComposite???
-//			Pixmap pix = XCreatePixmap(server.dsp, server.root_win, traywin->width, traywin->height, server.depth);
-//			XCopyArea(server.dsp, panel->temp_pmap, pix, server.gc, traywin->x, traywin->y, traywin->width, traywin->height, 0, 0);
-//			XSetWindowBackgroundPixmap(server.dsp, traywin->id, pix);
-			XClearArea(server.dsp, traywin->tray_id, 0, 0, traywin->width, traywin->height, True);
-		}
+		systray_render_icon(traywin);
 	}
 }

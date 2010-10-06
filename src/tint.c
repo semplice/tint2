@@ -31,7 +31,7 @@
 #include <Imlib2.h>
 #include <signal.h>
 
-#include "version.h"
+#include <version.h>
 #include "server.h"
 #include "window.h"
 #include "config.h"
@@ -41,6 +41,7 @@
 #include "panel.h"
 #include "tooltip.h"
 #include "timer.h"
+
 
 void signal_handler(int sig)
 {
@@ -52,6 +53,19 @@ void signal_handler(int sig)
 void init (int argc, char *argv[])
 {
 	int i;
+
+	// set global data
+	default_config();
+	default_timeout();
+	default_systray();
+	memset(&server, 0, sizeof(Server_global));
+#ifdef ENABLE_BATTERY
+	default_battery();
+#endif
+	default_clock();
+	default_taskbar();
+	default_tooltip();
+	default_panel();
 
 	// read options
 	for (i = 1; i < argc; ++i) {
@@ -75,15 +89,16 @@ void init (int argc, char *argv[])
 		}
 	}
 	// Set signal handler
+	signal_pending = 0;
 	struct sigaction sa = { .sa_handler = signal_handler };
 	sigaction(SIGUSR1, &sa, 0);
 	sigaction(SIGINT, &sa, 0);
 	sigaction(SIGTERM, &sa, 0);
 	sigaction(SIGHUP, &sa, 0);
-	signal(SIGCHLD, SIG_IGN);		// don't have to wait() after fork()
+//	signal(SIGCHLD, SIG_IGN);		// don't have to wait() after fork()
 
-	// BSD is too stupid to support pselect(), therefore we have to use select and hope that we do not
-	// end up in a race condition there
+	// BSD does not support pselect(), therefore we have to use select and hope that we do not
+	// end up in a race condition there (see 'man select()' on a linux machine for more information)
 	// block all signals, such that no race conditions occur before pselect in our main loop
 //	sigset_t block_mask;
 //	sigaddset(&block_mask, SIGINT);
@@ -91,10 +106,6 @@ void init (int argc, char *argv[])
 //	sigaddset(&block_mask, SIGHUP);
 //	sigaddset(&block_mask, SIGUSR1);
 //	sigprocmask(SIG_BLOCK, &block_mask, 0);
-
-	// set global data
-	memset(&server, 0, sizeof(Server_global));
-	memset(&systray, 0, sizeof(Systraybar));
 }
 
 void init_X11()
@@ -119,6 +130,8 @@ void init_X11()
 	XSelectInput (server.dsp, server.root_win, PropertyChangeMask|StructureNotifyMask);
 
 	setlocale (LC_ALL, "");
+	// config file use '.' as decimal separator
+	setlocale(LC_NUMERIC, "POSIX");
 
 	// load default icon
 	gchar *path;
@@ -140,22 +153,21 @@ void init_X11()
 
 void cleanup()
 {
-	stop_all_timeouts();
+	cleanup_timeout();
 	cleanup_systray();
-	stop_net();
 	cleanup_panel();
 	cleanup_tooltip();
 	cleanup_clock();
 #ifdef ENABLE_BATTERY
 	cleanup_battery();
 #endif
+	cleanup_config();
 
 	if (default_icon) {
 		imlib_context_set_image(default_icon);
 		imlib_free_image();
 	}
-	if (config_path) g_free(config_path);
-	if (snapshot_path) g_free(snapshot_path);
+	imlib_context_disconnect_display();
 
 	cleanup_server();
 	if (server.dsp) XCloseDisplay(server.dsp);
@@ -166,9 +178,10 @@ void get_snapshot(const char *path)
 {
 	Panel *panel = &panel1[0];
 
-	if (panel->temp_pmap) XFreePixmap(server.dsp, panel->temp_pmap);
-	panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
+	if (panel->area.width > server.monitor[0].width)
+		panel->area.width = server.monitor[0].width;
 
+	panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
 	refresh(&panel->area);
 
 	Imlib_Image img = NULL;
@@ -176,6 +189,11 @@ void get_snapshot(const char *path)
 	img = imlib_create_image_from_drawable(0, 0, 0, panel->area.width, panel->area.height, 0);
 
 	imlib_context_set_image(img);
+	if (!panel_horizontal) {
+		// rotate 90° vertical panel
+		imlib_image_flip_horizontal();
+		imlib_image_flip_diagonal();
+	}
 	imlib_save_image(path);
 	imlib_free_image();
 }
@@ -300,9 +318,64 @@ void event_button_press (XEvent *e)
 	}
 	task_drag = click_task(panel, e->xbutton.x, e->xbutton.y);
 
-	XLowerWindow (server.dsp, panel->main_win);
+	if (panel_layer == BOTTOM_LAYER)
+		XLowerWindow (server.dsp, panel->main_win);
 }
 
+void event_button_motion_notify (XEvent *e)
+{
+	Panel * panel = get_panel(e->xany.window);
+	if(!panel || !task_drag)
+		return;
+
+	// Find the taskbar on the event's location
+	Taskbar * event_taskbar = click_taskbar(panel, e->xbutton.x, e->xbutton.y);
+	if(event_taskbar == NULL)
+		return;
+
+	// Find the task on the event's location
+	Task * event_task = click_task(panel, e->xbutton.x, e->xbutton.y);
+
+	// If the event takes place on the same taskbar as the task being dragged
+	if(event_taskbar == task_drag->area.parent)	{
+		// Swap the task_drag with the task on the event's location (if they differ)
+		if(event_task && event_task != task_drag) {
+			GSList * drag_iter = g_slist_find(event_taskbar->area.list, task_drag);
+			GSList * task_iter = g_slist_find(event_taskbar->area.list, event_task);
+			if(drag_iter && task_iter) {
+				gpointer temp = task_iter->data;
+				task_iter->data = drag_iter->data;
+				drag_iter->data = temp;
+				event_taskbar->area.resize = 1;
+				panel_refresh = 1;
+				task_dragged = 1;
+			}
+		}
+	}
+	else { // The event is on another taskbar than the task being dragged
+		if(task_drag->desktop == ALLDESKTOP || panel_mode != MULTI_DESKTOP)
+			return;
+
+		Taskbar * drag_taskbar = (Taskbar*)task_drag->area.parent;
+		drag_taskbar->area.list = g_slist_remove(drag_taskbar->area.list, task_drag);
+
+		if(event_taskbar->area.posx > drag_taskbar->area.posx || event_taskbar->area.posy > drag_taskbar->area.posy)
+			event_taskbar->area.list = g_slist_prepend(event_taskbar->area.list, task_drag);
+		else
+			event_taskbar->area.list = g_slist_append(event_taskbar->area.list, task_drag);
+
+		// Move task to other desktop (but avoid the 'Window desktop changed' code in 'event_property_notify')
+		task_drag->area.parent = event_taskbar;
+		task_drag->desktop = event_taskbar->desktop;
+
+		windows_set_desktop(task_drag->win, event_taskbar->desktop);
+
+		event_taskbar->area.resize = 1;
+		drag_taskbar->area.resize = 1;
+		task_dragged = 1;
+		panel_refresh = 1;
+	}
+}
 
 void event_button_release (XEvent *e)
 {
@@ -311,7 +384,8 @@ void event_button_release (XEvent *e)
 
 	if (wm_menu && !tint2_handles_click(panel, &e->xbutton)) {
 		forward_click(e);
-		XLowerWindow (server.dsp, panel->main_win);
+		if (panel_layer == BOTTOM_LAYER)
+			XLowerWindow (server.dsp, panel->main_win);
 		task_drag = 0;
 		return;
 	}
@@ -340,7 +414,8 @@ void event_button_release (XEvent *e)
 
 	if ( click_clock(panel, e->xbutton.x, e->xbutton.y)) {
 		clock_action(e->xbutton.button);
-		XLowerWindow (server.dsp, panel->main_win);
+		if (panel_layer == BOTTOM_LAYER)
+			XLowerWindow (server.dsp, panel->main_win);
 		task_drag = 0;
 		return;
 	}
@@ -348,23 +423,17 @@ void event_button_release (XEvent *e)
 	Taskbar *tskbar;
 	if ( !(tskbar = click_taskbar(panel, e->xbutton.x, e->xbutton.y)) ) {
 		// TODO: check better solution to keep window below
-		XLowerWindow (server.dsp, panel->main_win);
+		if (panel_layer == BOTTOM_LAYER)
+			XLowerWindow (server.dsp, panel->main_win);
 		task_drag = 0;
 		return;
 	}
 
 	// drag and drop task
-	if (task_drag) {
-		if (tskbar != task_drag->area.parent && action == TOGGLE_ICONIFY) {
-			if (task_drag->desktop != ALLDESKTOP && panel_mode == MULTI_DESKTOP) {
-				windows_set_desktop(task_drag->win, tskbar->desktop);
-				if (tskbar->desktop == server.desktop)
-					set_active(task_drag->win);
-				task_drag = 0;
-			}
-			return;
-		}
-		else task_drag = 0;
+	if (task_dragged) {
+		task_drag = 0;
+		task_dragged = 0;
+		return;
 	}
 
 	// switch desktop
@@ -377,7 +446,8 @@ void event_button_release (XEvent *e)
 	window_action( click_task(panel, e->xbutton.x, e->xbutton.y), action);
 
 	// to keep window below
-	XLowerWindow (server.dsp, panel->main_win);
+	if (panel_layer == BOTTOM_LAYER)
+		XLowerWindow (server.dsp, panel->main_win);
 }
 
 
@@ -563,11 +633,7 @@ void event_configure_notify (Window win)
 {
 	// change in root window (xrandr)
 	if (win == server.root_win) {
-		get_monitors();
-		init_config();
-		config_read_file (config_path);
-		init_panel();
-		cleanup_config();
+		signal_pending = SIGUSR1;
 		return;
 	}
 
@@ -642,9 +708,12 @@ int main (int argc, char *argv[])
 	Panel *panel;
 	GSList *it;
 	struct timeval* timeout;
+	int hidden_dnd = 0;
 
+start:
 	init (argc, argv);
-	init_config();
+	init_X11();
+
 	i = 0;
 	if (config_path)
 		i = config_read_file (config_path);
@@ -656,9 +725,7 @@ int main (int argc, char *argv[])
 		exit(1);
 	}
 
-	init_X11();
 	init_panel();
-	cleanup_config();
 	if (snapshot_path) {
 		get_snapshot(snapshot_path);
 		cleanup();
@@ -694,7 +761,7 @@ int main (int argc, char *argv[])
 			XFlush (server.dsp);
 
 			panel = (Panel*)systray.area.panel;
-			if (refresh_systray && !panel->is_hidden) {
+			if (refresh_systray && panel && !panel->is_hidden) {
 				refresh_systray = 0;
 				// tint2 doen't draw systray icons. it just redraw background.
 				XSetWindowBackgroundPixmap (server.dsp, panel->main_win, panel->temp_pmap);
@@ -724,8 +791,18 @@ int main (int argc, char *argv[])
 						autohide_trigger_show(panel);
 					else if (e.type == LeaveNotify)
 						autohide_trigger_hide(panel);
-					if (panel->is_hidden)
-						continue;   // discard further processing of this event because the panel is not visible yet
+					if (panel->is_hidden) {
+						if (e.type == ClientMessage && e.xclient.message_type == server.atom.XdndPosition) {
+							hidden_dnd = 1;
+							autohide_show(panel);
+						}
+						else
+							continue;   // discard further processing of this event because the panel is not visible yet
+					}
+					else if (hidden_dnd && e.type == ClientMessage && e.xclient.message_type == server.atom.XdndLeave) {
+						hidden_dnd = 0;
+						autohide_hide(panel);
+					}
 				}
 
 				switch (e.type) {
@@ -739,6 +816,10 @@ int main (int argc, char *argv[])
 						break;
 
 					case MotionNotify: {
+						unsigned int button_mask = Button1Mask | Button2Mask | Button3Mask | Button4Mask | Button5Mask;
+						if (e.xmotion.state & button_mask)
+							event_button_motion_notify (&e);
+
 						if (!g_tooltip.enabled) break;
 						Panel* panel = get_panel(e.xmotion.window);
 						Area* area = click_area(panel, e.xmotion.x, e.xmotion.y);
@@ -777,8 +858,8 @@ int main (int argc, char *argv[])
 					case UnmapNotify:
 					case DestroyNotify:
 						if (e.xany.window == server.composite_manager) {
-							// TODO: Stop real_transparency
-							//signal_pending = SIGUSR2;
+							// Stop real_transparency
+							signal_pending = SIGUSR1;
 							break;
 						}
 						if (e.xany.window == g_tooltip.window || !systray.area.on_screen)
@@ -795,16 +876,13 @@ int main (int argc, char *argv[])
 						ev = &e.xclient;
 						if (ev->data.l[1] == server.atom._NET_WM_CM_S0) {
 							if (ev->data.l[2] == None)
-								// TODO: Stop real_transparency
-								//signal_pending = SIGUSR2;
-								;
+								// Stop real_transparency
+								signal_pending = SIGUSR1;
 							else
-								// TODO: Start real_transparency
-								//signal_pending = SIGUSR2;
-								;
+								// Start real_transparency
+								signal_pending = SIGUSR1;
 						}
-						if (!systray.area.on_screen) break;
-						if (e.xclient.message_type == server.atom._NET_SYSTEM_TRAY_OPCODE && e.xclient.format == 32 && e.xclient.window == net_sel_win) {
+						if (systray.area.on_screen && e.xclient.message_type == server.atom._NET_SYSTEM_TRAY_OPCODE && e.xclient.format == 32 && e.xclient.window == net_sel_win) {
 							net_message(&e.xclient);
 						}
 						else if (e.xclient.message_type == server.atom.XdndPosition) {
@@ -821,7 +899,7 @@ int main (int argc, char *argv[])
 							XDamageNotifyEvent* de = &event_union.de;
 							for (l = systray.list_icons; l ; l = l->next) {
 								traywin = (TrayWindow*)l->data;
-								if ( traywin->id == de->drawable && !de->more ) {
+								if ( traywin->id == de->drawable ) {
 									systray_render_icon(traywin);
 									break;
 								}
@@ -833,19 +911,18 @@ int main (int argc, char *argv[])
 
 		callback_timeout_expired();
 
-		switch (signal_pending) {
-		case SIGUSR1: // reload config file
-			signal_pending = 0;
-			init_config();
-			config_read_file (config_path);
-			init_panel();
-			cleanup_config();
-			break;
-		case SIGINT:
-		case SIGTERM:
-		case SIGHUP:
-			cleanup ();
-			return 0;
+		if (signal_pending) {
+			cleanup();
+			if (signal_pending == SIGUSR1) {
+				// restart tint2
+				// SIGUSR1 used when : user's signal, composite manager stop/start or xrandr
+				FD_CLR (x11_fd, &fdset); // not sure if needed
+				goto start;
+			}
+			else {
+				// SIGINT, SIGTERM, SIGHUP
+				return 0;
+			}
 		}
 	}
 }
