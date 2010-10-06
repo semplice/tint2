@@ -25,7 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <unistd.h>
 
 #include "common.h"
 #include "../server.h"
@@ -74,6 +74,23 @@ int parse_line (const char *line, char **key, char **value)
 	g_strstrip(*key);
 	g_strstrip(*value);
 	return 1;
+}
+
+
+void tint_exec(const char *command)
+{
+	if (command) {
+		pid_t pid;
+		pid = fork();
+		if (pid == 0) {
+			// change for the fork the signal mask
+//			sigset_t sigset;
+//			sigprocmask(SIG_SETMASK, &sigset, 0);
+//			sigprocmask(SIG_UNBLOCK, &sigset, 0);
+			execl("/bin/sh", "/bin/sh", "-c", command, NULL);
+			_exit(0);
+		}
+	}
 }
 
 
@@ -281,6 +298,7 @@ void render_image(Drawable d, int x, int y, int w, int h)
 	Picture pict_drawable = XRenderCreatePicture(server.dsp, d, XRenderFindVisualFormat(server.dsp, server.visual), 0, 0);
 	XRenderComposite(server.dsp, PictOpIn, pict_image, None, pict_image, 0, 0, 0, 0, 0, 0, w, h);
 	XRenderComposite(server.dsp, PictOpOver, pict_image, None, pict_drawable, 0, 0, 0, 0, x, y, w, h);
+	imlib_context_set_blend(1);
 	XFreePixmap(server.dsp, pmap_tmp);
 	XRenderFreePicture(server.dsp, pict_image);
 	XRenderFreePicture(server.dsp, pict_drawable);

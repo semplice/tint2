@@ -13,7 +13,7 @@
 #include <X11/Xatom.h>
 #include <X11/extensions/Xinerama.h>
 
-extern int real_transparency;
+
 typedef struct Global_atom
 {
 	Atom _XROOTPMAP_ID;
@@ -49,6 +49,7 @@ typedef struct Global_atom
 	Atom _NET_WM_VISIBLE_NAME;
 	Atom _NET_WM_STRUT;
 	Atom _NET_WM_ICON;
+  Atom _NET_WM_ICON_GEOMETRY;
 	Atom _NET_CLOSE_WINDOW;
 	Atom UTF8_STRING;
 	Atom _NET_SUPPORTING_WM_CHECK;
@@ -68,6 +69,7 @@ typedef struct Global_atom
 	Atom XdndAware;
 	Atom XdndPosition;
 	Atom XdndStatus;
+	Atom XdndLeave;
 } Global_atom;
 
 
@@ -78,6 +80,7 @@ typedef struct Monitor
 	int y;
 	int width;
 	int height;
+	char** names;
 } Monitor;
 
 
@@ -86,6 +89,7 @@ typedef struct
 	Display *dsp;
 	Window root_win;
 	Window composite_manager;
+	int real_transparency;
 	// current desktop
 	int desktop;
 	int screen;
@@ -96,16 +100,21 @@ typedef struct
 	Monitor *monitor;
 	int got_root_win;
 	Visual *visual;
+	Visual *visual32;
 	// root background
 	Pixmap root_pmap;
 	GC gc;
 	Colormap colormap;
+	Colormap colormap32;
 	Global_atom atom;
 } Server_global;
 
 
 Server_global server;
 
+
+// freed memory
+void cleanup_server();
 
 void send_event32 (Window win, Atom at, long data1, long data2, long data3);
 int  get_property32 (Window win, Atom at, Atom type);
@@ -114,7 +123,6 @@ Atom server_get_atom (char *atom_name);
 void server_catch_error (Display *d, XErrorEvent *ev);
 void server_init_atoms ();
 void server_init_visual();
-void cleanup_server();
 
 // detect root background
 void get_root_pixmap();

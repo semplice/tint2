@@ -49,17 +49,16 @@ extern int panel_position;
 extern int panel_horizontal;
 
 extern int panel_refresh;
+extern int task_dragged;
 
 //panel autohide
-enum { STRUT_MINIMUM, STRUT_FOLLOW_SIZE };
+enum { STRUT_MINIMUM, STRUT_FOLLOW_SIZE, STRUT_NONE };
 extern int panel_autohide;
 extern int panel_autohide_show_timeout;
 extern int panel_autohide_hide_timeout;
 extern int panel_autohide_height;  // for vertical panels this is of course the width
 extern int panel_strut_policy;
 
-extern Task *task_active;
-extern Task *task_drag;
 extern int  max_tick_urgent;
 
 extern GArray* backgrounds;
@@ -120,12 +119,18 @@ extern Panel panel_config;
 extern Panel *panel1;
 extern int  nb_panel;
 
+
+// default global data
+void default_panel();
+
+// freed memory
+void cleanup_panel();
+
 // realloc panels according to number of monitor
 // use panel_config as default value
 void init_panel();
 
 void init_panel_size_and_position(Panel *panel);
-void cleanup_panel();
 void resize_panel(void *obj);
 
 void set_panel_properties(Panel *p);
@@ -143,7 +148,9 @@ int click_padding(Panel *panel, int x, int y);
 int click_clock(Panel *panel, int x, int y);
 Area* click_area(Panel *panel, int x, int y);
 
-void autohide_trigger_show();
-void autohide_trigger_hide();
+void autohide_show(void* p);
+void autohide_hide(void* p);
+void autohide_trigger_show(Panel* p);
+void autohide_trigger_hide(Panel* p);
 
 #endif

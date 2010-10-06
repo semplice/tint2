@@ -52,61 +52,26 @@
 #endif
 
 // global path
-char *config_path = 0;
-char *snapshot_path = 0;
+char *config_path;
+char *snapshot_path;
 
 // --------------------------------------------------
 // backward compatibility
-static int old_task_icon_size;
-// detect if it's an old config file
-// ==1
+// detect if it's an old config file (==1)
 static int old_config_file;
 
 
-void init_config()
+void default_config()
 {
-	if (backgrounds)
-		g_array_free(backgrounds, 1);
-	backgrounds = g_array_new(0, 0, sizeof(Background));
-
-	// append full transparency background
-	Background transparent_bg;
-	memset(&transparent_bg, 0, sizeof(Background));
-	g_array_append_val(backgrounds, transparent_bg);
-
-	// tint2 could reload config, so we cleanup objects
-	cleanup_systray();
-#ifdef ENABLE_BATTERY
-	cleanup_battery();
-#endif
-	cleanup_clock();
-	cleanup_tooltip();
-
-	// panel's default value
-	if (panel_config.g_task.font_desc) {
-		pango_font_description_free(panel_config.g_task.font_desc);
-	}
-	memset(&panel_config, 0, sizeof(Panel));
-	int i;
-	for (i=0; i<TASK_STATE_COUNT; ++i)
-		panel_config.g_task.alpha[i] = 100;
-	systray.alpha = 100;
-	systray.sort = 3;
+	config_path = 0;
+	snapshot_path = 0;
 	old_config_file = 1;
-
-	// window manager's menu default value == false
-	wm_menu = 0;
-	max_tick_urgent = 7;
-
-	// flush pango cache if possible
-	//pango_xft_shutdown_display(server.dsp, server.screen);
-	//PangoFontMap *font_map = pango_xft_get_font_map(server.dsp, server.screen);
-	//pango_fc_font_map_shutdown(font_map);
 }
-
 
 void cleanup_config()
 {
+	if (config_path) g_free(config_path);
+	if (snapshot_path) g_free(snapshot_path);
 }
 
 
@@ -188,6 +153,32 @@ int get_task_status(char* status)
 }
 
 
+int config_get_monitor(char* monitor)
+{
+	if (strcmp(monitor, "all") != 0) {
+		char* endptr;
+		int ret_int = strtol(monitor, &endptr, 10);
+		if (*endptr == 0)
+			return ret_int-1;
+		else {
+			// monitor specified by name, not by index
+			int i, j;
+			for (i=0; i<server.nb_monitor; ++i) {
+				if (server.monitor[i].names == 0) 
+					// xrandr can't identify monitors
+					continue;
+				j = 0;
+				while (server.monitor[i].names[j] != 0) {
+					if (strcmp(monitor, server.monitor[i].names[j++]) == 0)
+						return i;
+				}
+			}
+		}
+	}
+	// monitor == "all" or monitor not found or xrandr can't identify monitors
+	return -1;
+}
+
 void add_entry (char *key, char *value)
 {
 	char *value1=0, *value2=0, *value3=0;
@@ -219,11 +210,7 @@ void add_entry (char *key, char *value)
 
 	/* Panel */
 	else if (strcmp (key, "panel_monitor") == 0) {
-		if (strcmp (value, "all") == 0) panel_config.monitor = -1;
-		else {
-			panel_config.monitor = atoi (value);
-			if (panel_config.monitor > 0) panel_config.monitor -= 1;
-		}
+		panel_config.monitor = config_get_monitor(value);
 	}
 	else if (strcmp (key, "panel_size") == 0) {
 		extract_values(value, &value1, &value2, &value3);
@@ -296,10 +283,10 @@ void add_entry (char *key, char *value)
 	else if (strcmp (key, "panel_layer") == 0) {
 		if (strcmp(value, "bottom") == 0)
 			panel_layer = BOTTOM_LAYER;
-		else if (strcmp(value, "normal") == 0)
-			panel_layer = NORMAL_LAYER;
 		else if (strcmp(value, "top") == 0)
 			panel_layer = TOP_LAYER;
+		else
+			panel_layer = NORMAL_LAYER;
 	}
 
 	/* Battery */
@@ -510,12 +497,13 @@ void add_entry (char *key, char *value)
 	}
 
 	/* Systray */
-	else if (strcmp (key, "systray") == 0) {
+	// systray disabled in snapshot mode
+	else if (strcmp (key, "systray") == 0 && snapshot_path == 0) {
 		systray_enabled = atoi(value);
 		// systray is latest option added. files without 'systray' are old.
 		old_config_file = 0;
 	}
-	else if (strcmp (key, "systray_padding") == 0) {
+	else if (strcmp (key, "systray_padding") == 0 && snapshot_path == 0) {
 		if (old_config_file)
 			systray_enabled = 1;
 		extract_values(value, &value1, &value2, &value3);
@@ -599,14 +587,21 @@ void add_entry (char *key, char *value)
 	else if (strcmp(key, "strut_policy") == 0) {
 		if (strcmp(value, "follow_size") == 0)
 			panel_strut_policy = STRUT_FOLLOW_SIZE;
+		else if (strcmp(value, "none") == 0)
+			panel_strut_policy = STRUT_NONE;
 		else
 			panel_strut_policy = STRUT_MINIMUM;
 	}
-	else if (strcmp(key, "autohide_height") == 0)
+	else if (strcmp(key, "autohide_height") == 0) {
 		panel_autohide_height = atoi(value);
+		if (panel_autohide_height == 0) {
+			// autohide need height > 0
+			panel_autohide_height = 1;
+		}
+	}
 
 	else
-		fprintf(stderr, "tint2 : invalid option \"%s\", correct your config file\n", key);
+		fprintf(stderr, "tint2 : invalid option \"%s\",\n  upgrade tint2 or correct your config file\n", key);
 
 	if (value1) free (value1);
 	if (value2) free (value2);
@@ -678,9 +673,6 @@ int config_read_file (const char *path)
 	}
 	fclose (fp);
 
-	if (old_task_icon_size) {
-		panel_config.g_task.area.paddingy = ((int)panel_config.area.height - (2 * panel_config.area.paddingy) - old_task_icon_size) / 2;
-	}
 	return 1;
 }
 

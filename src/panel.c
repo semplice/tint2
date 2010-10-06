@@ -27,6 +27,7 @@
 #include <pango/pangocairo.h>
 
 #include "server.h"
+#include "config.h"
 #include "window.h"
 #include "task.h"
 #include "panel.h"
@@ -45,41 +46,85 @@ int mouse_tilt_right;
 
 int panel_mode;
 int wm_menu;
-int panel_dock=0;  // default not in the dock
-int panel_layer=BOTTOM_LAYER;  // default is bottom layer
+int panel_dock;
+int panel_layer;
 int panel_position;
 int panel_horizontal;
 int panel_refresh;
+int task_dragged;
 
-int panel_autohide = 0;
-int panel_autohide_show_timeout = 0;
-int panel_autohide_hide_timeout = 0;
-int panel_autohide_height = 5;  // for vertical panels this is of course the width
-int panel_strut_policy = STRUT_MINIMUM;
+int panel_autohide;
+int panel_autohide_show_timeout;
+int panel_autohide_hide_timeout;
+int panel_autohide_height;
+int panel_strut_policy;
 
-Task *task_active;
-Task *task_drag;
 int  max_tick_urgent;
 
 // panel's initial config
 Panel panel_config;
 // panels (one panel per monitor)
-Panel *panel1 = 0;
-int  nb_panel = 0;
+Panel *panel1;
+int  nb_panel;
 
-GArray* backgrounds = 0;
+GArray* backgrounds;
 
-Imlib_Image default_icon = NULL;
+Imlib_Image default_icon;
 
+void default_panel()
+{
+	panel1 = 0;
+	nb_panel = 0;
+	default_icon = NULL;
+	task_dragged = 0;
+	panel_horizontal = 1;
+	panel_position = CENTER;
+	panel_autohide = 0;
+	panel_autohide_show_timeout = 0;
+	panel_autohide_hide_timeout = 0;
+	panel_autohide_height = 5;  // for vertical panels this is of course the width
+	panel_strut_policy = STRUT_FOLLOW_SIZE;
+	panel_dock = 0;  // default not in the dock
+	panel_layer = BOTTOM_LAYER;  // default is bottom layer
+	wm_menu = 0;
+	max_tick_urgent = 7;
+	backgrounds = g_array_new(0, 0, sizeof(Background));
 
-void autohide_hide(void* p);
-void autohide_show(void* p);
+	memset(&panel_config, 0, sizeof(Panel));
 
+	// append full transparency background
+	Background transparent_bg;
+	memset(&transparent_bg, 0, sizeof(Background));
+	g_array_append_val(backgrounds, transparent_bg);
+}
+
+void cleanup_panel()
+{
+	if (!panel1) return;
+
+	cleanup_taskbar();
+
+	int i;
+	Panel *p;
+	for (i=0 ; i < nb_panel ; i++) {
+		p = &panel1[i];
+
+		free_area(&p->area);
+		if (p->temp_pmap) XFreePixmap(server.dsp, p->temp_pmap);
+		if (p->hidden_pixmap) XFreePixmap(server.dsp, p->hidden_pixmap);
+		if (p->main_win) XDestroyWindow(server.dsp, p->main_win);
+	}
+
+	if (panel1) free(panel1);
+	if (backgrounds)
+		g_array_free(backgrounds, 1);
+	if (panel_config.g_task.font_desc) pango_font_description_free(panel_config.g_task.font_desc);
+}
 
 void init_panel()
 {
-	int i, old_nb_panel;
-	Panel *new_panel, *p;
+	int i;
+	Panel *p;
 
 	if (panel_config.monitor > (server.nb_monitor-1)) {
 		// server.nb_monitor minimum value is 1 (see get_monitors())
@@ -94,45 +139,20 @@ void init_panel()
 	init_battery();
 #endif
 
-	cleanup_taskbar();
-	for (i=0 ; i < nb_panel ; i++) {
-		free_area(&panel1[i].area);
-		if (panel1[i].temp_pmap) {
-			XFreePixmap(server.dsp, panel1[i].temp_pmap);
-			panel1[i].temp_pmap = 0;
-		}
-	}
-
-	// number of panels
-	old_nb_panel = nb_panel;
+	// number of panels (one monitor or 'all' monitors)
 	if (panel_config.monitor >= 0)
 		nb_panel = 1;
 	else
 		nb_panel = server.nb_monitor;
 
-	// freed old panels
-	for (i=nb_panel ; i < old_nb_panel ; i++) {
-		if (panel1[i].main_win) {
-			XDestroyWindow(server.dsp, panel1[i].main_win);
-			panel1[i].main_win = 0;
-		}
-	}
-
-	// alloc & init new panel
-	Window old_win;
-	if (nb_panel != old_nb_panel)
-		new_panel = realloc(panel1, nb_panel * sizeof(Panel));
-	else
-		new_panel = panel1;
+	panel1 = malloc(nb_panel * sizeof(Panel));
 	for (i=0 ; i < nb_panel ; i++) {
-		old_win = new_panel[i].main_win;
-		memcpy(&new_panel[i], &panel_config, sizeof(Panel));
-		new_panel[i].main_win = old_win;
+		memcpy(&panel1[i], &panel_config, sizeof(Panel));
 	}
 
 	fprintf(stderr, "tint2 : nb monitor %d, nb monitor used %d, nb desktop %d\n", server.nb_monitor, nb_panel, server.nb_desktop);
 	for (i=0 ; i < nb_panel ; i++) {
-		p = &new_panel[i];
+		p = &panel1[i];
 
 		if (panel_config.monitor < 0)
 			p->monitor = i;
@@ -163,21 +183,17 @@ void init_panel()
 			refresh_systray = 1;
 		}
 
-		if (i >= old_nb_panel) {
-			// new panel : catch some events
-			long event_mask = ExposureMask|ButtonPressMask|ButtonReleaseMask;
-			if (g_tooltip.enabled)
-				event_mask |= PointerMotionMask|LeaveWindowMask;
-			if (panel_autohide)
-				event_mask |= LeaveWindowMask|EnterWindowMask;
-			XSetWindowAttributes att = { .event_mask=event_mask, .colormap=server.colormap, .background_pixel=0, .border_pixel=0 };
-			unsigned long mask = CWEventMask|CWColormap|CWBackPixel|CWBorderPixel;
-			p->main_win = XCreateWindow(server.dsp, server.root_win, p->posx, p->posy, p->area.width, p->area.height, 0, server.depth, InputOutput, server.visual, mask, &att);
-		}
-		else {
-			// old panel
-			XMoveResizeWindow(server.dsp, p->main_win, p->posx, p->posy, p->area.width, p->area.height);
-		}
+		// catch some events
+		XSetWindowAttributes att = { .colormap=server.colormap, .background_pixel=0, .border_pixel=0 };
+		unsigned long mask = CWEventMask|CWColormap|CWBackPixel|CWBorderPixel;
+		p->main_win = XCreateWindow(server.dsp, server.root_win, p->posx, p->posy, p->area.width, p->area.height, 0, server.depth, InputOutput, server.visual, mask, &att);
+
+		long event_mask = ExposureMask|ButtonPressMask|ButtonReleaseMask|ButtonMotionMask;
+		if (g_tooltip.enabled)
+			event_mask |= PointerMotionMask|LeaveWindowMask;
+		if (panel_autohide)
+			event_mask |= LeaveWindowMask|EnterWindowMask;
+		XChangeWindowAttributes(server.dsp, p->main_win, CWEventMask, &(XSetWindowAttributes){.event_mask=event_mask});
 
 		if (!server.gc) {
 			XGCValues  gcv;
@@ -186,8 +202,8 @@ void init_panel()
 		//printf("panel %d : %d, %d, %d, %d\n", i, p->posx, p->posy, p->area.width, p->area.height);
 		set_panel_properties(p);
 		set_panel_background(p);
-		if (i >= old_nb_panel) {
-			// map new panel
+		if (snapshot_path == 0) {
+			// if we are not in 'snapshot' mode then map new panel
 			XMapWindow (server.dsp, p->main_win);
 		}
 
@@ -195,7 +211,6 @@ void init_panel()
 			add_timeout(panel_autohide_hide_timeout, 0, autohide_hide, p);
 	}
 
-	panel1 = new_panel;
 	panel_refresh = 1;
 	init_taskbar();
 	visible_object();
@@ -264,65 +279,17 @@ void init_panel_size_and_position(Panel *panel)
 		}
 	}
 
-	if (panel_autohide) {
-		int diff = (panel_horizontal ? panel->area.height : panel->area.width) - panel_autohide_height;
-		if (panel_horizontal) {
-			panel->hidden_width = panel->area.width;
-			panel->hidden_height = panel->area.height - diff;
-		}
-		else {
-			panel->hidden_width = panel->area.width - diff;
-			panel->hidden_height = panel->area.height;
-		}
+	// autohide or strut_policy=minimum
+	int diff = (panel_horizontal ? panel->area.height : panel->area.width) - panel_autohide_height;
+	if (panel_horizontal) {
+		panel->hidden_width = panel->area.width;
+		panel->hidden_height = panel->area.height - diff;
+	}
+	else {
+		panel->hidden_width = panel->area.width - diff;
+		panel->hidden_height = panel->area.height;
 	}
 	// printf("panel : posx %d, posy %d, width %d, height %d\n", panel->posx, panel->posy, panel->area.width, panel->area.height);
-}
-
-
-void cleanup_panel()
-{
-	if (!panel1) return;
-
-	task_active = 0;
-	task_drag = 0;
-
-	cleanup_taskbar();
-
-	int i;
-	Panel *p;
-	for (i=0 ; i < nb_panel ; i++) {
-		p = &panel1[i];
-
-		free_area(&p->area);
-
-		if (p->temp_pmap) {
-			XFreePixmap(server.dsp, p->temp_pmap);
-			p->temp_pmap = 0;
-		}
-		if (p->hidden_pixmap)
-			XFreePixmap(server.dsp, p->hidden_pixmap);
-		p->hidden_pixmap = 0;
-		if (p->main_win) {
-			XDestroyWindow(server.dsp, p->main_win);
-			p->main_win = 0;
-		}
-	}
-
-	if (panel1) {
-		free(panel1);
-		panel1 = 0;
-		nb_panel = 0;
-	}
-
-	if (panel_config.g_task.font_desc) {
-		pango_font_description_free(panel_config.g_task.font_desc);
-		panel_config.g_task.font_desc = 0;
-	}
-
-	if (backgrounds) {
-		g_array_free(backgrounds, 1);
-		backgrounds = 0;
-	}
 }
 
 
@@ -429,6 +396,12 @@ void visible_object()
 
 void update_strut(Panel* p)
 {
+	if (panel_strut_policy == STRUT_NONE) {
+		XDeleteProperty(server.dsp, p->main_win, server.atom._NET_WM_STRUT);
+		XDeleteProperty(server.dsp, p->main_win, server.atom._NET_WM_STRUT_PARTIAL);
+		return;
+	}
+
 	// Reserved space
 	unsigned int d1, screen_width, screen_height;
 	Window d2;
@@ -438,7 +411,7 @@ void update_strut(Panel* p)
 	long   struts [12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	if (panel_horizontal) {
 		int height = p->area.height + p->marginy;
-		if (panel_autohide && (panel_strut_policy == STRUT_MINIMUM || (panel_strut_policy == STRUT_FOLLOW_SIZE && p->is_hidden)) )
+		if (panel_strut_policy == STRUT_MINIMUM || (panel_strut_policy == STRUT_FOLLOW_SIZE && p->is_hidden))
 			height = p->hidden_height;
 		if (panel_position & TOP) {
 			struts[2] = height + monitor.y;
@@ -455,7 +428,7 @@ void update_strut(Panel* p)
 	}
 	else {
 		int width = p->area.width + p->marginx;
-		if (panel_autohide && (panel_strut_policy == STRUT_MINIMUM || (panel_strut_policy == STRUT_FOLLOW_SIZE && p->is_hidden)) )
+		if (panel_strut_policy == STRUT_MINIMUM || (panel_strut_policy == STRUT_FOLLOW_SIZE && p->is_hidden))
 			width = p->hidden_width;
 		if (panel_position & LEFT) {
 			struts[0] = width + monitor.x;
@@ -557,7 +530,7 @@ void set_panel_background(Panel *p)
 	else if (!panel_horizontal && panel_position & RIGHT)
 		xoff = p->area.width-p->hidden_width;
 
-	if (real_transparency) {
+	if (server.real_transparency) {
 		clear_pixmap(p->area.pix, 0, 0, p->area.width, p->area.height);
 	}
 	else {
@@ -772,6 +745,7 @@ void autohide_hide(void* p)
 
 	XUnmapSubwindows(server.dsp, panel->main_win);  // systray windows
 	int diff = (panel_horizontal ? panel->area.height : panel->area.width) - panel_autohide_height;
+	//printf("autohide_hide : diff %d, w %d, h %d\n", diff, panel->hidden_width, panel->hidden_height);
 	if (panel_horizontal) {
 		if (panel_position & TOP)
 			XResizeWindow(server.dsp, panel->main_win, panel->hidden_width, panel->hidden_height);
