@@ -3,6 +3,7 @@ Description: add support for power_now battery attribute
  a power_now attribute in the sysfs.
 Author: Sebastian Reichel <elektranox@gmail.com>
 Forwarded: http://code.google.com/p/tint2/issues/detail?id=299
+Applied-Upstream: 0.12, http://code.google.com/p/tint2/source/detail?r=576
 
 diff --git a/src/battery/battery.c b/src/battery/battery.c
 index 4bbde3c..2051c68 100644
