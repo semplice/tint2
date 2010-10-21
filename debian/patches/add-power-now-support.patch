@@ -1,0 +1,25 @@
+Description: add support for power_now battery attribute
+ starting from linux 2.6.36 my thinkpad does only offer
+ a power_now attribute in the sysfs.
+Author: Sebastian Reichel <elektranox@gmail.com>
+
+diff --git a/src/battery/battery.c b/src/battery/battery.c
+index 4bbde3c..2051c68 100644
+--- a/src/battery/battery.c
++++ b/src/battery/battery.c
+@@ -184,8 +184,14 @@ void init_battery()
+ 		}
+ 		g_free(path2);
+ 	}
+-	if (path_energy_now && path_energy_full) {
++
++	path_current_now = g_build_filename(battery_dir, "power_now", NULL);
++	if (!g_file_test (path_current_now, G_FILE_TEST_EXISTS)) {
++		g_free(path_current_now);
+ 		path_current_now = g_build_filename(battery_dir, "current_now", NULL);
++	}
++
++	if (path_energy_now && path_energy_full) {
+ 		path_status = g_build_filename(battery_dir, "status", NULL);
+ 
+ 		// check file
