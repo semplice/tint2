@@ -9,10 +9,11 @@ tint2 (0.11-1) unstable; urgency=low
   * Update Debian Standards Version to 3.9.1
   * Use DEP5 for debian/copyright
   * Added build dependencies: cmake, libgtk2.0-dev
-  * Add patch to rename tintwizard.py to tintwizard
+  * Add patch to rename tintwizard.py to tint wizard
   * Add patch to adding power_now support
+  * Recommend python for tintwizard
 
- -- Sebastian Reichel <elektranox@gmail.com>  Wed, 06 Oct 2010 22:13:06 +0200
+ -- Sebastian Reichel <elektranox@gmail.com>  Fri, 26 Nov 2010 22:01:43 +0100
 
 tint2 (0.9-2) unstable; urgency=low
 
