@@ -1,6 +1,6 @@
 Format-Specification: http://svn.debian.org/wsvn/dep/web/deps/dep5.mdwn?op=file&rev=135
 Name: tint2
-Maintainer: Sebastian Reichel <elektranox@gmail.com>
+Maintainer: Sebastian Reichel <sre@debian.org>
 Source: http://code.google.com/p/tint2/
 
 Files: *
@@ -25,7 +25,7 @@ License: GPL-2
  can be found in `/usr/share/common-licenses/GPL-2'.
 
 Files: src/battery/*
-Copyright: 2009, Sebastian Reichel <elektranox@gmail.com>
+Copyright: 2009, Sebastian Reichel <sre@debian.org>
 License: GPL-2+
  This program is free software; you can redistribute it and/or
  modify it under the terms of the GNU General Public License version 2
@@ -65,7 +65,7 @@ License: GPL-3
 
 Files: debian/*
 Copyright: 2008-2010, Daniel Moerner <dmoerner@gmail.com>
-           2010, Sebastian Reichel <elektranox@gmail.com>
+           2010, Sebastian Reichel <sre@debian.org>
 License: ISC
  Permission to use, copy, modify, and/or distribute this software for any
  purpose with or without fee is hereby granted, provided that the above

@@ -1,8 +1,7 @@
 Source: tint2
 Section: x11
 Priority: optional
-Maintainer: Sebastian Reichel <elektranox@gmail.com>
-DM-Upload-Allowed: yes
+Maintainer: Sebastian Reichel <sre@debian.org>
 Build-Depends: cmake,
                debhelper (>= 7.0.50),
                libcairo2-dev,

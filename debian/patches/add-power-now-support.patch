@@ -1,7 +1,7 @@
 Description: add support for power_now battery attribute
  starting from linux 2.6.36 my thinkpad does only offer
  a power_now attribute in the sysfs.
-Author: Sebastian Reichel <elektranox@gmail.com>
+Author: Sebastian Reichel <sre@debian.org>
 Forwarded: http://code.google.com/p/tint2/issues/detail?id=299
 Applied-Upstream: 0.12, http://code.google.com/p/tint2/source/detail?r=576
 

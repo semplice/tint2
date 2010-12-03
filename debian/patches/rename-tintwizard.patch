@@ -1,7 +1,7 @@
 Description: correct tintwizard path
  tintwizard is installed as /usr/bin/tintwizard instead of
  /usr/bin/tintwizard.py in Debian.
-Author: Sebastian Reichel <elektranox@gmail.com>
+Author: Sebastian Reichel <sre@debian.org>
 Forwarded: not-needed
 
 Index: tint2/src/tint2conf/main.c
