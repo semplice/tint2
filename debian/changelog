@@ -1,3 +1,9 @@
+tint2 (0.11-2) unstable; urgency=low
+
+  * Recommend python-gtk2 instead of python-gtk 
+
+ -- Sebastian Reichel <sre@debian.org>  Sun, 05 Dec 2010 05:05:46 +0100
+
 tint2 (0.11-1) unstable; urgency=low
 
   * Make me the maintainer of this package (Closes: #598688)
