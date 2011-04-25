@@ -75,10 +75,13 @@ void init_tooltip()
 }
 
 
-void tooltip_trigger_show(Area* area, Panel* p, int x_root, int y_root)
+void tooltip_trigger_show(Area* area, Panel* p, XEvent *e)
 {
-	x = x_root;
-	y = y_root;
+	// Position the tooltip in the center of the area
+	x = area->posx + area->width / 2 + e->xmotion.x_root - e->xmotion.x;
+	y = area->posy + area->height / 2 + e->xmotion.y_root - e->xmotion.y;
+	if (!panel_horizontal)
+		y -= height/2;
 	g_tooltip.panel = p;
 	if (g_tooltip.mapped && g_tooltip.area != area) {
 		tooltip_copy_text(area);
@@ -93,10 +96,10 @@ void tooltip_trigger_show(Area* area, Panel* p, int x_root, int y_root)
 
 void tooltip_show(void* arg)
 {
-  int mx, my;
-  Window w;
-  XTranslateCoordinates( server.dsp, server.root_win, g_tooltip.panel->main_win, x, y, &mx, &my, &w);
-  Area* area = click_area(g_tooltip.panel, mx, my);
+	int mx, my;
+	Window w;
+	XTranslateCoordinates( server.dsp, server.root_win, g_tooltip.panel->main_win, x, y, &mx, &my, &w);
+	Area* area = click_area(g_tooltip.panel, mx, my);
 	stop_tooltip_timeout();
 	if (!g_tooltip.mapped && area->_get_tooltip_text) {
 		tooltip_copy_text(area);
@@ -148,22 +151,22 @@ void tooltip_adjust_geometry()
 	Panel* panel = g_tooltip.panel;
 	int screen_width = server.monitor[panel->monitor].x + server.monitor[panel->monitor].width;
 	int screen_height = server.monitor[panel->monitor].y + server.monitor[panel->monitor].height;
-	if ( x+width <= screen_width && y+height <= screen_height && x>=0 && y>=0)
+	if ( x+width <= screen_width && y+height <= screen_height && x>=server.monitor[panel->monitor].x && y>=server.monitor[panel->monitor].y )
 		return;    // no adjustment needed
 
 	if (panel_horizontal) {
 		min_x=0;
-		max_width=screen_width;
-		max_height=screen_height-panel->area.height;
+		max_width=server.monitor[panel->monitor].width;
+		max_height=server.monitor[panel->monitor].height-panel->area.height;
 		if (panel_position & BOTTOM)
 			min_y=0;
 		else
 			min_y=panel->area.height;
 	}
 	else {
-		max_width=screen_width-panel->area.width;
+		max_width=server.monitor[panel->monitor].width-panel->area.width;
 		min_y=0;
-		max_height=screen_height;
+		max_height=server.monitor[panel->monitor].height;
 		if (panel_position & LEFT)
 			min_x=panel->area.width;
 		else

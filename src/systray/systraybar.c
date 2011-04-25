@@ -1,7 +1,7 @@
 /**************************************************************************
 * Tint2 : systraybar
 *
-* Copyright (C) 2009 thierry lorthiois (lorthiois@bbsoft.fr)
+* Copyright (C) 2009 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 * based on 'docker-1.5' from Ben Jansens.
 *
 * This program is free software; you can redistribute it and/or
@@ -61,6 +61,8 @@ void default_systray()
 	systray.alpha = 100;
 	systray.sort = 3;
 	systray.area._draw_foreground = draw_systray;
+	systray.area._on_change_layout = on_change_systray;
+	systray.area.size_mode = SIZE_BY_CONTENT;
 	systray.area._resize = resize_systray;
 }
 
@@ -89,27 +91,27 @@ void init_systray()
 		systray.alpha = 100;
 		systray.brightness = systray.saturation = 0;
 	}
-	systray.area.resize = 1;
-	systray.area.redraw = 1;
-	systray.area.on_screen = 1;
-	refresh_systray = 0;
 }
 
 
 void init_systray_panel(void *p)
 {
-	Panel *panel =(Panel*)p;
-
-	if (panel_horizontal) {
-		systray.area.posy = panel->area.bg->border.width + panel->area.paddingy;
-		systray.area.height = panel->area.height - (2 * systray.area.posy);
-	}
-	else {
-		systray.area.posx = panel->area.bg->border.width + panel->area.paddingy;
-		systray.area.width = panel->area.width - (2 * panel->area.bg->border.width) - (2 * panel->area.paddingy);
-	}
 	systray.area.parent = p;
 	systray.area.panel = p;
+	if (systray.area.bg == 0)
+		systray.area.bg = &g_array_index(backgrounds, Background, 0);
+
+	GSList *l;
+	int count = 0;
+	for (l = systray.list_icons; l ; l = l->next) {
+		if (!((TrayWindow*)l->data)->hide)
+			count++;
+	}
+	if (count == 0)
+		hide(&systray.area);
+	else 
+		show(&systray.area);
+	refresh_systray = 0;
 }
 
 
@@ -125,22 +127,19 @@ void draw_systray(void *obj, cairo_t *c)
 }
 
 
-void resize_systray(void *obj)
+int resize_systray(void *obj)
 {
 	Systraybar *sysbar = obj;
-	Panel *panel = sysbar->area.panel;
-	TrayWindow *traywin;
 	GSList *l;
-	int count, icon_size;
-	int icons_per_column=1, icons_per_row=1, marging=0;
+	int count;
 
 	if (panel_horizontal)
-		icon_size = sysbar->area.height;
+		sysbar->icon_size = sysbar->area.height;
 	else
-		icon_size = sysbar->area.width;
-	icon_size = icon_size - (2 * sysbar->area.bg->border.width) - (2 * sysbar->area.paddingy);
-	if (systray_max_icon_size > 0 && icon_size > systray_max_icon_size)
-		icon_size = systray_max_icon_size;
+		sysbar->icon_size = sysbar->area.width;
+	sysbar->icon_size = sysbar->icon_size - (2 * sysbar->area.bg->border.width) - (2 * sysbar->area.paddingy);
+	if (systray_max_icon_size > 0 && sysbar->icon_size > systray_max_icon_size)
+		sysbar->icon_size = systray_max_icon_size;
 	count = 0;
 	for (l = systray.list_icons; l ; l = l->next) {
 		if (!((TrayWindow*)l->data)->hide)
@@ -149,46 +148,32 @@ void resize_systray(void *obj)
 	//printf("count %d\n", count);
 
 	if (panel_horizontal) {
-		if (!count) systray.area.width = 0;
-		else {
-			int height = sysbar->area.height - 2*sysbar->area.bg->border.width - 2*sysbar->area.paddingy;
-			// here icons_per_column always higher than 0
-			icons_per_column = (height+sysbar->area.paddingx) / (icon_size+sysbar->area.paddingx);
-			marging = height - (icons_per_column-1)*(icon_size+sysbar->area.paddingx) - icon_size;
-			icons_per_row = count / icons_per_column + (count%icons_per_column != 0);
-			systray.area.width = (2 * systray.area.bg->border.width) + (2 * systray.area.paddingxlr) + (icon_size * icons_per_row) + ((icons_per_row-1) * systray.area.paddingx);
-		}
-
-		systray.area.posx = panel->area.width - panel->area.bg->border.width - panel->area.paddingxlr - systray.area.width;
-		if (panel->clock.area.on_screen)
-			systray.area.posx -= (panel->clock.area.width + panel->area.paddingx);
-#ifdef ENABLE_BATTERY
-		if (panel->battery.area.on_screen)
-			systray.area.posx -= (panel->battery.area.width + panel->area.paddingx);
-#endif
+		int height = sysbar->area.height - 2*sysbar->area.bg->border.width - 2*sysbar->area.paddingy;
+		// here icons_per_column always higher than 0
+		sysbar->icons_per_column = (height+sysbar->area.paddingx) / (sysbar->icon_size+sysbar->area.paddingx);
+		sysbar->marging = height - (sysbar->icons_per_column-1)*(sysbar->icon_size+sysbar->area.paddingx) - sysbar->icon_size;
+		sysbar->icons_per_row = count / sysbar->icons_per_column + (count%sysbar->icons_per_column != 0);
+		systray.area.width = (2 * systray.area.bg->border.width) + (2 * systray.area.paddingxlr) + (sysbar->icon_size * sysbar->icons_per_row) + ((sysbar->icons_per_row-1) * systray.area.paddingx);
 	}
 	else {
-		if (!count) systray.area.height = 0;
-		else {
-			int width = sysbar->area.width - 2*sysbar->area.bg->border.width - 2*sysbar->area.paddingy;
-			// here icons_per_row always higher than 0
-			icons_per_row = (width+sysbar->area.paddingx) / (icon_size+sysbar->area.paddingx);
-			marging = width - (icons_per_row-1)*(icon_size+sysbar->area.paddingx) - icon_size;
-			icons_per_column = count / icons_per_row+ (count%icons_per_row != 0);
-			systray.area.height = (2 * systray.area.bg->border.width) + (2 * systray.area.paddingxlr) + (icon_size * icons_per_column) + ((icons_per_column-1) * systray.area.paddingx);
-		}
-
-		systray.area.posy = panel->area.bg->border.width + panel->area.paddingxlr;
-		if (panel->clock.area.on_screen)
-			systray.area.posy += (panel->clock.area.height + panel->area.paddingx);
-#ifdef ENABLE_BATTERY
-		if (panel->battery.area.on_screen)
-			systray.area.posy += (panel->battery.area.height + panel->area.paddingx);
-#endif
+		int width = sysbar->area.width - 2*sysbar->area.bg->border.width - 2*sysbar->area.paddingy;
+		// here icons_per_row always higher than 0
+		sysbar->icons_per_row = (width+sysbar->area.paddingx) / (sysbar->icon_size+sysbar->area.paddingx);
+		sysbar->marging = width - (sysbar->icons_per_row-1)*(sysbar->icon_size+sysbar->area.paddingx) - sysbar->icon_size;
+		sysbar->icons_per_column = count / sysbar->icons_per_row+ (count%sysbar->icons_per_row != 0);
+		systray.area.height = (2 * systray.area.bg->border.width) + (2 * systray.area.paddingxlr) + (sysbar->icon_size * sysbar->icons_per_column) + ((sysbar->icons_per_column-1) * systray.area.paddingx);
 	}
+	return 1;
+}
 
+
+void on_change_systray (void *obj)
+{
+	// here, systray.area.posx/posy are defined by rendering engine. so we can calculate position of tray icon.
+	Systraybar *sysbar = obj;
+	Panel *panel = sysbar->area.panel;
 	int i, posx, posy;
-	int start = panel->area.bg->border.width + panel->area.paddingy + systray.area.bg->border.width + systray.area.paddingy +marging/2;
+	int start = panel->area.bg->border.width + panel->area.paddingy + systray.area.bg->border.width + systray.area.paddingy + sysbar->marging/2;
 	if (panel_horizontal) {
 		posy = start;
 		posx = systray.area.posx + systray.area.bg->border.width + systray.area.paddingxlr;
@@ -198,37 +183,38 @@ void resize_systray(void *obj)
 		posy = systray.area.posy + systray.area.bg->border.width + systray.area.paddingxlr;
 	}
 
+	TrayWindow *traywin;
+	GSList *l;
 	for (i=1, l = systray.list_icons; l ; i++, l = l->next) {
 		traywin = (TrayWindow*)l->data;
 		if (traywin->hide) continue;
 
 		traywin->y = posy;
 		traywin->x = posx;
-		traywin->width = icon_size;
-		traywin->height = icon_size;
+		//printf("systray %d : %d,%d\n", i, posx, posy);
+		traywin->width = sysbar->icon_size;
+		traywin->height = sysbar->icon_size;
 		if (panel_horizontal) {
-			if (i % icons_per_column)
-				posy += icon_size + sysbar->area.paddingx;
+			if (i % sysbar->icons_per_column)
+				posy += sysbar->icon_size + sysbar->area.paddingx;
 			else {
 				posy = start;
-				posx += (icon_size + systray.area.paddingx);
+				posx += (sysbar->icon_size + systray.area.paddingx);
 			}
 		}
 		else {
-			if (i % icons_per_row)
-				posx += icon_size + systray.area.paddingx;
+			if (i % sysbar->icons_per_row)
+				posx += sysbar->icon_size + systray.area.paddingx;
 			else {
 				posx = start;
-				posy += (icon_size + systray.area.paddingx);
+				posy += (sysbar->icon_size + systray.area.paddingx);
 			}
 		}
 
 		// position and size the icon window
-		XMoveResizeWindow(server.dsp, traywin->id, traywin->x, traywin->y, icon_size, icon_size);
-		XResizeWindow(server.dsp, traywin->tray_id, icon_size, icon_size);
+		XMoveResizeWindow(server.dsp, traywin->id, traywin->x, traywin->y, sysbar->icon_size, sysbar->icon_size);
+		XResizeWindow(server.dsp, traywin->tray_id, sysbar->icon_size, sysbar->icon_size);
 	}
-	// resize force the redraw
-	systray.area.redraw = 1;
 }
 
 
@@ -277,7 +263,7 @@ void start_net()
 
 	// v0.3 trayer specification. tint2 always horizontal.
 	// Vertical panel will draw the systray horizontal.
-	int orient = 0;
+	long orient = 0;
 	XChangeProperty(server.dsp, net_sel_win, server.atom._NET_SYSTEM_TRAY_ORIENTATION, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) &orient, 1);
 	VisualID vid;
 	if (server.visual32 && (systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0))
@@ -373,9 +359,11 @@ gboolean add_icon(Window id)
 	if ( XGetWindowAttributes(server.dsp, id, &attr) == False ) return FALSE;
 	unsigned long mask = 0;
 	XSetWindowAttributes set_attr;
+	Visual* visual = server.visual;
 	//printf("icon with depth: %d, width %d, height %d\n", attr.depth, attr.width, attr.height);
-	printf("icon with depth: %d\n", attr.depth);
+	//printf("icon with depth: %d\n", attr.depth);
 	if (attr.depth != server.depth || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+		visual = attr.visual;
 		set_attr.colormap = attr.colormap;
 		set_attr.background_pixel = 0;
 		set_attr.border_pixel = 0;
@@ -386,7 +374,7 @@ gboolean add_icon(Window id)
 		mask = CWBackPixmap;
 	}
 	Window parent_window;
-	parent_window = XCreateWindow(server.dsp, panel->main_win, 0, 0, 30, 30, 0, attr.depth, InputOutput, attr.visual, mask, &set_attr);
+	parent_window = XCreateWindow(server.dsp, panel->main_win, 0, 0, 30, 30, 0, attr.depth, InputOutput, visual, mask, &set_attr);
 	old = XSetErrorHandler(window_error_handler);
 	XReparentWindow(server.dsp, id, parent_window, 0, 0);
 	XSync(server.dsp, False);
@@ -443,13 +431,15 @@ gboolean add_icon(Window id)
 	traywin->depth = attr.depth;
 	traywin->damage = 0;
 
+	if (systray.area.on_screen == 0)
+		show(&systray.area);
+
 	if (systray.sort == 3)
 		systray.list_icons = g_slist_prepend(systray.list_icons, traywin);
 	else if (systray.sort == 2)
 		systray.list_icons = g_slist_append(systray.list_icons, traywin);
 	else
 		systray.list_icons = g_slist_insert_sorted(systray.list_icons, traywin, compare_traywindows);
-	systray.area.resize = 1;
 	//printf("add_icon id %lx, %d\n", id, g_slist_length(systray.list_icons));
 
 	// watch for the icon trying to resize itself!
@@ -465,8 +455,8 @@ gboolean add_icon(Window id)
 	if (!traywin->hide && !panel->is_hidden)
 		XMapRaised(server.dsp, traywin->id);
 
-	// changed in systray force resize on panel
-	panel->area.resize = 1;
+	// changed in systray
+	systray.area.resize = 1;
 	panel_refresh = 1;
 	return TRUE;
 }
@@ -478,7 +468,6 @@ void remove_icon(TrayWindow *traywin)
 
 	// remove from our list
 	systray.list_icons = g_slist_remove(systray.list_icons, traywin);
-	systray.area.resize = 1;
 	//printf("remove_icon id %lx, %d\n", traywin->id);
 
 	XSelectInput(server.dsp, traywin->tray_id, NoEventMask);
@@ -498,9 +487,18 @@ void remove_icon(TrayWindow *traywin)
 		stop_timeout(traywin->render_timeout);
 	g_free(traywin);
 
-	// changed in systray force resize on panel
-	Panel *panel = systray.area.panel;
-	panel->area.resize = 1;
+	// check empty systray
+	int count = 0;
+	GSList *l;
+	for (l = systray.list_icons; l ; l = l->next) {
+		if (!((TrayWindow*)l->data)->hide)
+			count++;
+	}
+	if (count == 0)
+		hide(&systray.area);
+		
+	// changed in systray
+	systray.area.resize = 1;
 	panel_refresh = 1;
 }
 
@@ -537,6 +535,11 @@ void systray_render_icon_now(void* t)
 	// we made also sure, that we always have a 32 bit visual, i.e. we can safely create 32 bit pixmaps here
 	TrayWindow* traywin = t;
 	traywin->render_timeout = 0;
+	if ( traywin->width == 0 || traywin->height == 0 ) {
+		// reschedule rendering since the geometry information has not yet been processed (can happen on slow cpu)
+		systray_render_icon(traywin);
+		return;
+	}
 
 	// good systray icons support 32 bit depth, but some icons are still 24 bit.
 	// We create a heuristic mask for these icons, i.e. we get the rgb value in the top left corner, and

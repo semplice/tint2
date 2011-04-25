@@ -3,7 +3,7 @@
 * Tint2 : common windows function
 *
 * Copyright (C) 2007 Pål Staurland (staura@gmail.com)
-* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -87,9 +87,12 @@ int window_is_hidden (Window win)
 			return 1;
 		}
 		// do not add transient_for windows if the transient window is already in the taskbar
-		if ( XGetTransientForHint(server.dsp, win, &window) && task_get_tasks(window) ) {
-			XFree(at);
-			return 1;
+		window=win;
+		while ( XGetTransientForHint(server.dsp, window, &window) ) {
+			if ( task_get_tasks(window) ) {
+				XFree(at);
+				return 1;
+			}
 		}
 	}
 	XFree(at);
@@ -200,6 +203,26 @@ int server_get_number_of_desktop ()
 }
 
 
+GSList *server_get_name_of_desktop ()
+{
+	int count, j;
+	GSList *list = NULL;
+	gchar *data_ptr, *ptr;
+	data_ptr = server_get_property (server.root_win, server.atom._NET_DESKTOP_NAMES, server.atom.UTF8_STRING, &count);
+	if (data_ptr) {
+		list = g_slist_append(list, g_strdup(data_ptr));
+		for (j = 0; j < count-1; j++) {
+			if (*(data_ptr + j)	== '\0') {
+				ptr = (gchar*)data_ptr + j + 1;
+				list = g_slist_append(list, g_strdup(ptr));
+			}
+		}
+		XFree(data_ptr);
+	}
+	return list;
+}
+
+
 int server_get_current_desktop ()
 {
 	return get_property32(server.root_win, server.atom._NET_CURRENT_DESKTOP, XA_CARDINAL);
@@ -218,17 +241,17 @@ int window_is_active (Window win)
 }
 
 
-int get_icon_count (long *data, int num)
+int get_icon_count (gulong *data, int num)
 {
 	int count, pos, w, h;
 
 	count = 0;
 	pos = 0;
-	while (pos < num) {
+	while (pos+2 < num) {
 		w = data[pos++];
 		h = data[pos++];
 		pos += w * h;
-		if (pos > num || w * h == 0) break;
+		if (pos > num || w <= 0 || h <= 0) break;
 		count++;
 	}
 
@@ -236,10 +259,10 @@ int get_icon_count (long *data, int num)
 }
 
 
-long *get_best_icon (long *data, int icon_count, int num, int *iw, int *ih, int best_icon_size)
+gulong *get_best_icon (gulong *data, int icon_count, int num, int *iw, int *ih, int best_icon_size)
 {
 	int width[icon_count], height[icon_count], pos, i, w, h;
-	long *icon_data[icon_count];
+	gulong *icon_data[icon_count];
 
 	/* List up icons */
 	pos = 0;
@@ -298,6 +321,32 @@ void get_text_size(PangoFontDescription *font, int *height_ink, int *height, int
 	pango_layout_get_pixel_extents(layout, &rect_ink, &rect);
 	*height_ink = rect_ink.height;
 	*height = rect.height;
+	//printf("dimension : %d - %d\n", rect_ink.height, rect.height);
+
+	g_object_unref (layout);
+	cairo_destroy (c);
+	cairo_surface_destroy (cs);
+	XFreePixmap (server.dsp, pmap);
+}
+
+
+void get_text_size2(PangoFontDescription *font, int *height_ink, int *height, int *width, int panel_height, int panel_with, char *text, int len)
+{
+	PangoRectangle rect_ink, rect;
+
+	Pixmap pmap = XCreatePixmap (server.dsp, server.root_win, panel_height, panel_height, server.depth);
+
+	cairo_surface_t *cs = cairo_xlib_surface_create (server.dsp, pmap, server.visual, panel_height, panel_with);
+	cairo_t *c = cairo_create (cs);
+
+	PangoLayout *layout = pango_cairo_create_layout (c);
+	pango_layout_set_font_description (layout, font);
+	pango_layout_set_text (layout, text, len);
+
+	pango_layout_get_pixel_extents(layout, &rect_ink, &rect);
+	*height_ink = rect_ink.height;
+	*height = rect.height;
+	*width = rect.width;
 	//printf("dimension : %d - %d\n", rect_ink.height, rect.height);
 
 	g_object_unref (layout);

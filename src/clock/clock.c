@@ -2,7 +2,7 @@
 *
 * Tint2 : clock
 *
-* Copyright (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Copyright (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -26,9 +26,7 @@
 
 #include "window.h"
 #include "server.h"
-#include "area.h"
 #include "panel.h"
-#include "taskbar.h"
 #include "clock.h"
 #include "timer.h"
 #include "common.h"
@@ -45,9 +43,9 @@ char *clock_rclick_command;
 struct timeval time_clock;
 PangoFontDescription *time1_font_desc;
 PangoFontDescription *time2_font_desc;
-static char buf_time[40];
-static char buf_date[40];
-static char buf_tooltip[40];
+static char buf_time[256];
+static char buf_date[256];
+static char buf_tooltip[512];
 int clock_enabled;
 static timeout* clock_timeout;
 
@@ -80,6 +78,7 @@ void cleanup_clock()
 	if (time_tooltip_timezone) g_free(time_tooltip_timezone);
 	if (clock_lclick_command) g_free(clock_lclick_command);
 	if (clock_rclick_command) g_free(clock_rclick_command);
+	if (clock_timeout) stop_timeout(clock_timeout);
 }
 
 
@@ -144,44 +143,20 @@ void init_clock_panel(void *p)
 {
 	Panel *panel =(Panel*)p;
 	Clock *clock = &panel->clock;
-	int time_height, time_height_ink, date_height, date_height_ink;
-
+	
+	if (clock->area.bg == 0)
+		clock->area.bg = &g_array_index(backgrounds, Background, 0);
 	clock->area.parent = p;
 	clock->area.panel = p;
 	clock->area._draw_foreground = draw_clock;
+	clock->area.size_mode = SIZE_BY_CONTENT;
 	clock->area._resize = resize_clock;
+	// check consistency
+	if (time1_format == 0)
+		return;
+
 	clock->area.resize = 1;
-	clock->area.redraw = 1;
 	clock->area.on_screen = 1;
-
-	strftime(buf_time, sizeof(buf_time), time1_format, clock_gettime_for_tz(time1_timezone));
-	get_text_size(time1_font_desc, &time_height_ink, &time_height, panel->area.height, buf_time, strlen(buf_time));
-	if (time2_format) {
-		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
-		get_text_size(time2_font_desc, &date_height_ink, &date_height, panel->area.height, buf_date, strlen(buf_date));
-	}
-
-	if (panel_horizontal) {
-		// panel horizonal => fixed height and posy
-		clock->area.posy = panel->area.bg->border.width + panel->area.paddingy;
-		clock->area.height = panel->area.height - (2 * clock->area.posy);
-	}
-	else {
-		// panel vertical => fixed width, height, posy and posx
-		clock->area.posy = panel->area.bg->border.width + panel->area.paddingxlr;
-		clock->area.height = (2 * clock->area.paddingxlr) + (time_height + date_height);
-		clock->area.posx = panel->area.bg->border.width + panel->area.paddingy;
-		clock->area.width = panel->area.width - (2 * panel->area.bg->border.width) - (2 * panel->area.paddingy);
-	}
-
-	clock->time1_posy = (clock->area.height - time_height) / 2;
-	if (time2_format) {
-		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
-		get_text_size(time2_font_desc, &date_height_ink, &date_height, panel->area.height, buf_date, strlen(buf_date));
-
-		clock->time1_posy -= ((date_height_ink + 2) / 2);
-		clock->time2_posy = clock->time1_posy + time_height + 2 - (time_height - time_height_ink)/2 - (date_height - date_height_ink)/2;
-	}
 
 	if (time_tooltip_format) {
 		clock->area._get_tooltip_text = clock_get_tooltip;
@@ -224,69 +199,51 @@ void draw_clock (void *obj, cairo_t *c)
 }
 
 
-void resize_clock (void *obj)
+int resize_clock (void *obj)
 {
 	Clock *clock = obj;
-	PangoLayout *layout;
-	int time_width, date_width, new_width;
+	Panel *panel = clock->area.panel;
+	int time_height_ink, time_height, time_width, date_height_ink, date_height, date_width, ret = 0;
 
 	clock->area.redraw = 1;
-	time_width = date_width = 0;
+	
+	date_height = date_width = 0;
 	strftime(buf_time, sizeof(buf_time), time1_format, clock_gettime_for_tz(time1_timezone));
-	if (time2_format)
-		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
-
-	// vertical panel doen't adjust width
-	if (!panel_horizontal) return;
-
-	//printf("  resize_clock\n");
-	cairo_surface_t *cs;
-	cairo_t *c;
-	Pixmap pmap;
-	pmap = XCreatePixmap (server.dsp, server.root_win, clock->area.width, clock->area.height, server.depth);
-
-	cs = cairo_xlib_surface_create (server.dsp, pmap, server.visual, clock->area.width, clock->area.height);
-	c = cairo_create (cs);
-	layout = pango_cairo_create_layout (c);
-
-	// check width
-	pango_layout_set_font_description (layout, time1_font_desc);
-	pango_layout_set_indent(layout, 0);
-	pango_layout_set_text (layout, buf_time, strlen(buf_time));
-	pango_layout_get_pixel_size (layout, &time_width, NULL);
+	get_text_size2(time1_font_desc, &time_height_ink, &time_height, &time_width, panel->area.height, panel->area.width, buf_time, strlen(buf_time));
 	if (time2_format) {
-		pango_layout_set_font_description (layout, time2_font_desc);
-		pango_layout_set_indent(layout, 0);
-		pango_layout_set_text (layout, buf_date, strlen(buf_date));
-		pango_layout_get_pixel_size (layout, &date_width, NULL);
+		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
+		get_text_size2(time2_font_desc, &date_height_ink, &date_height, &date_width, panel->area.height, panel->area.width, buf_date, strlen(buf_date));
 	}
 
-	if (time_width > date_width) new_width = time_width;
-	else new_width = date_width;
-	new_width += (2*clock->area.paddingxlr) + (2*clock->area.bg->border.width);
-
-	Panel *panel = ((Area*)obj)->panel;
-	if (new_width > clock->area.width || new_width < (clock->area.width-6)) {
-		// resize clock
-		// we try to limit the number of resize
-		// printf("clock_width %d, new_width %d\n", clock->area.width, new_width);
-		clock->area.width = new_width + 1;
-
-		// resize other objects on panel
-		panel->area.resize = 1;
-#ifdef ENABLE_BATTERY
-		panel->battery.area.resize = 1;
-#endif
-		systray.area.resize = 1;
-		panel_refresh = 1;
+	if (panel_horizontal) {
+		int new_size = (time_width > date_width) ? time_width : date_width;
+		new_size += (2*clock->area.paddingxlr) + (2*clock->area.bg->border.width);
+		if (new_size > clock->area.width || new_size < (clock->area.width-6)) {
+			// we try to limit the number of resize
+			clock->area.width = new_size + 1;
+			clock->time1_posy = (clock->area.height - time_height) / 2;
+			if (time2_format) {
+				clock->time1_posy -= (date_height)/2;
+				clock->time2_posy = clock->time1_posy + time_height;
+			}
+			ret = 1;
+		}
 	}
-	clock->area.posx = panel->area.width - clock->area.width - panel->area.paddingxlr - panel->area.bg->border.width;
+	else {
+		int new_size = time_height + date_height + (2 * (clock->area.paddingxlr + clock->area.bg->border.width));
+		if (new_size != clock->area.height) {
+			// we try to limit the number of resize
+			clock->area.height =  new_size;
+			clock->time1_posy = (clock->area.height - time_height) / 2;
+			if (time2_format) {
+				clock->time1_posy -= (date_height)/2;
+				clock->time2_posy = clock->time1_posy + time_height;
+			}
+			ret = 1;
+		}
+	}
 
-
-	g_object_unref (layout);
-	cairo_destroy (c);
-	cairo_surface_destroy (cs);
-	XFreePixmap (server.dsp, pmap);
+	return ret;
 }
 
 
@@ -301,6 +258,6 @@ void clock_action(int button)
 		command = clock_rclick_command;
 		break;
 	}
-  tint_exec(command);
+	tint_exec(command);
 }
 

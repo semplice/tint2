@@ -3,7 +3,7 @@
 * Tint2 : task
 *
 * Copyright (C) 2007 Pål Staurland (staura@gmail.com)
-* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -96,7 +96,8 @@ Task *add_task (Window win)
 			new_tsk2->area.on_screen = 0;
 		}
 		new_tsk2->title = new_tsk.title;
-		new_tsk2->area._get_tooltip_text = task_get_tooltip;
+		if (panel1[monitor].g_task.tooltip_enabled)
+			new_tsk2->area._get_tooltip_text = task_get_tooltip;
 		for (k=0; k<TASK_STATE_COUNT; ++k) {
 			new_tsk2->icon[k] = new_tsk.icon[k];
 			new_tsk2->state_pix[k] = 0;
@@ -159,12 +160,12 @@ void remove_task (Task *tsk)
 }
 
 
-void get_title(Task *tsk)
+int get_title(Task *tsk)
 {
 	Panel *panel = tsk->area.panel;
 	char *title, *name;
 
-	if (!panel->g_task.text && !g_tooltip.enabled) return;
+	if (!panel->g_task.text && !panel->g_task.tooltip_enabled) return 0;
 
 	name = server_get_property (tsk->win, server.atom._NET_WM_VISIBLE_NAME, server.atom.UTF8_STRING, 0);
 	if (!name || !strlen(name)) {
@@ -184,9 +185,16 @@ void get_title(Task *tsk)
 	else title[0] = 0;
 	strcat(title, name);
 	if (name) XFree (name);
-
-	if (tsk->title)
-		free(tsk->title);
+	
+	if (tsk->title) {
+		// check unecessary title change
+		if (strcmp(tsk->title, title) == 0) {
+			free(title);
+			return 0;
+		}
+		else
+			free(tsk->title);
+	} 
 
 	tsk->title = title;
 	GPtrArray* task_group = task_get_tasks(tsk->win);
@@ -198,7 +206,7 @@ void get_title(Task *tsk)
 			set_task_redraw(tsk2);
 		}
 	}
-	set_task_redraw(tsk);
+	return 1;
 }
 
 
@@ -209,7 +217,7 @@ void get_icon (Task *tsk)
 	int i;
 	Imlib_Image img = NULL;
 	XWMHints *hints = 0;
-	long *data = 0;
+	gulong *data = 0;
 
 	int k;
 	for (k=0; k<TASK_STATE_COUNT; ++k) {
@@ -224,10 +232,9 @@ void get_icon (Task *tsk)
 	if (data) {
 		// get ARGB icon
 		int w, h;
-		long *tmp_data;
+		gulong *tmp_data;
 
 		tmp_data = get_best_icon (data, get_icon_count (data, i), i, &w, &h, panel->g_task.icon_size1);
-
 #ifdef __x86_64__
 		DATA32 icon_data[w * h];
 		int length = w * h;
@@ -304,7 +311,6 @@ void get_icon (Task *tsk)
 			set_task_redraw(tsk2);
 		}
 	}
-	set_task_redraw(tsk);
 }
 
 
@@ -343,6 +349,7 @@ void draw_task (void *obj, cairo_t *c)
 	Color *config_text;
 	int width=0, height;
 	Panel *panel = (Panel*)tsk->area.panel;
+	//printf("draw_task %d %d\n", tsk->area.posx, tsk->area.posy);
 
 	if (panel->g_task.text) {
 		/* Layout */
@@ -386,19 +393,35 @@ void draw_task (void *obj, cairo_t *c)
 }
 
 
+void on_change_task (void *obj)
+{
+	Task *tsk = obj;
+	Panel *panel = (Panel*)tsk->area.panel;
+
+	long value[] = { panel->posx+tsk->area.posx, panel->posy+tsk->area.posy, tsk->area.width, tsk->area.height };
+	XChangeProperty (server.dsp, tsk->win, server.atom._NET_WM_ICON_GEOMETRY, XA_CARDINAL, 32, PropModeReplace, (unsigned char*)value, 4);
+	
+	// reset Pixmap when position/size changed
+	set_task_redraw(tsk);
+}
+
+
 Task *next_task(Task *tsk)
 {
 	if (tsk == 0)
 		return 0;
 
-	GSList *l0;
+	GSList *l0, *lfirst_tsk;
 	Task *tsk1;
 	Taskbar* tskbar = tsk->area.parent;
 
-	for (l0 = tskbar->area.list; l0 ; l0 = l0->next) {
+	l0 = tskbar->area.list;
+	if (taskbarname_enabled) l0 = l0->next;
+	lfirst_tsk = l0;
+	for (; l0 ; l0 = l0->next) {
 		tsk1 = l0->data;
 		if (tsk1 == tsk) {
-			if (l0->next == 0) l0 = tskbar->area.list;
+			if (l0->next == 0) l0 = lfirst_tsk;
 			else l0 = l0->next;
 			return l0->data;
 		}
@@ -412,15 +435,18 @@ Task *prev_task(Task *tsk)
 	if (tsk == 0)
 		return 0;
 
-	GSList *l0;
+	GSList *l0, *lfirst_tsk;
 	Task *tsk1, *tsk2;
 	Taskbar* tskbar = tsk->area.parent;
 
 	tsk2 = 0;
-	for (l0 = tskbar->area.list; l0 ; l0 = l0->next) {
+	l0 = tskbar->area.list;
+	if (taskbarname_enabled) l0 = l0->next;
+	lfirst_tsk = l0;
+	for (; l0 ; l0 = l0->next) {
 		tsk1 = l0->data;
 		if (tsk1 == tsk) {
-			if (l0 == tskbar->area.list) {
+			if (l0 == lfirst_tsk) {
 				l0 = g_slist_last ( l0 );
 				tsk2 = l0->data;
 			}
@@ -444,9 +470,11 @@ void active_task()
 	//printf("Change active task %ld\n", w1);
 
 	if (w1) {
-		Window w2;
-		if (XGetTransientForHint(server.dsp, w1, &w2) != 0)
-			if (w2 && !task_get_tasks(w1)) w1 = w2;
+		if (!task_get_tasks(w1)) {
+			Window w2;
+			while (XGetTransientForHint(server.dsp, w1, &w2))
+				w1 = w2;
+		}
 		set_task_state((task_active = task_get_task(w1)), TASK_ACTIVE);
 	}
 }

@@ -36,8 +36,10 @@ void server_catch_error (Display *d, XErrorEvent *ev){}
 void server_init_atoms ()
 {
 	server.atom._XROOTPMAP_ID = XInternAtom (server.dsp, "_XROOTPMAP_ID", False);
+	server.atom._XROOTMAP_ID = XInternAtom (server.dsp, "_XROOTMAP_ID", False);
 	server.atom._NET_CURRENT_DESKTOP = XInternAtom (server.dsp, "_NET_CURRENT_DESKTOP", False);
 	server.atom._NET_NUMBER_OF_DESKTOPS = XInternAtom (server.dsp, "_NET_NUMBER_OF_DESKTOPS", False);
+	server.atom._NET_DESKTOP_NAMES = XInternAtom (server.dsp, "_NET_DESKTOP_NAMES", False);
 	server.atom._NET_DESKTOP_GEOMETRY = XInternAtom (server.dsp, "_NET_DESKTOP_GEOMETRY", False);
 	server.atom._NET_DESKTOP_VIEWPORT = XInternAtom (server.dsp, "_NET_DESKTOP_VIEWPORT", False);
 	server.atom._NET_ACTIVE_WINDOW = XInternAtom (server.dsp, "_NET_ACTIVE_WINDOW", False);
@@ -79,17 +81,21 @@ void server_init_atoms ()
 	server.atom.__SWM_VROOT = XInternAtom(server.dsp, "__SWM_VROOT", False);
 	server.atom._MOTIF_WM_HINTS = XInternAtom(server.dsp, "_MOTIF_WM_HINTS", False);
 	server.atom.WM_HINTS = XInternAtom(server.dsp, "WM_HINTS", False);
+	char *name = g_strdup_printf("_XSETTINGS_S%d", DefaultScreen(server.dsp));
+	server.atom._XSETTINGS_SCREEN = XInternAtom(server.dsp, name, False);
+	g_free(name);
+	server.atom._XSETTINGS_SETTINGS = XInternAtom(server.dsp, "_XSETTINGS_SETTINGS", False);
 
 	// systray protocol
-	char *name_trayer = g_strdup_printf("_NET_SYSTEM_TRAY_S%d", DefaultScreen(server.dsp));
-	server.atom._NET_SYSTEM_TRAY_SCREEN = XInternAtom(server.dsp, name_trayer, False);
+	name = g_strdup_printf("_NET_SYSTEM_TRAY_S%d", DefaultScreen(server.dsp));
+	server.atom._NET_SYSTEM_TRAY_SCREEN = XInternAtom(server.dsp, name, False);
+	g_free(name);
 	server.atom._NET_SYSTEM_TRAY_OPCODE = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_OPCODE", False);
 	server.atom.MANAGER = XInternAtom(server.dsp, "MANAGER", False);
 	server.atom._NET_SYSTEM_TRAY_MESSAGE_DATA = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_MESSAGE_DATA", False);
 	server.atom._NET_SYSTEM_TRAY_ORIENTATION = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_ORIENTATION", False);
 	server.atom._XEMBED = XInternAtom(server.dsp, "_XEMBED", False);
 	server.atom._XEMBED_INFO = XInternAtom(server.dsp, "_XEMBED_INFO", False);
-	g_free(name_trayer);
 
 	// drag 'n' drop
 	server.atom.XdndAware = XInternAtom(server.dsp, "XdndAware", False);
@@ -170,8 +176,8 @@ void *server_get_property (Window win, Atom at, Atom type, int *num_results)
 
 	result = XGetWindowProperty(server.dsp, win, at, 0, 0x7fffffff, False, type, &type_ret, &format_ret, &nitems_ret, &bafter_ret, &prop_value);
 
-	/* Send back resultcount */
-	if (num_results) *num_results = nitems_ret;
+	// Send back resultcount
+	if (num_results) *num_results = (int)nitems_ret;
 
 	if (result == Success && prop_value) return prop_value;
 	else return 0;
@@ -183,16 +189,17 @@ void get_root_pixmap()
 	Pixmap ret = None;
 
 	unsigned long *res;
-	int  c = 2;
+	Atom pixmap_atoms[] = { server.atom._XROOTPMAP_ID, server.atom._XROOTMAP_ID };
+	int i;
 
-	do {
-		res = server_get_property (server.root_win, server.atom._XROOTPMAP_ID, XA_PIXMAP, 0);
+	for (i=0; i<sizeof(pixmap_atoms)/sizeof(Atom); ++i) {
+		res = server_get_property (server.root_win, pixmap_atoms[i], XA_PIXMAP, 0);
 		if (res) {
 			ret = *((Pixmap*)res);
 			XFree(res);
 			break;
 		}
-	} while (--c > 0);
+	}
 	server.root_pmap = ret;
 
 	if (server.root_pmap == None)
@@ -302,7 +309,7 @@ void get_monitors()
 			i++;
 		}
 next:
-		for (j=i; j<server.nb_monitor; ++j)
+		for (j=i; j<nbmonitor; ++j)
 			if (server.monitor[j].names)
 				g_strfreev(server.monitor[j].names);
 		server.nb_monitor = i;
