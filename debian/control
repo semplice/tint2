@@ -13,7 +13,7 @@ Build-Depends: cmake,
                libxdamage-dev,
                libxinerama-dev,
                libxrandr-dev
-Standards-Version: 3.9.1
+Standards-Version: 3.9.2
 Vcs-Git: git://git.debian.org/git/collab-maint/tint2.git
 Vcs-Browser: http://git.debian.org/?p=collab-maint/tint2.git
 Homepage: http://code.google.com/p/tint2/
