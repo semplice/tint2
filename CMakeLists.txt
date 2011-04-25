@@ -3,18 +3,18 @@ cmake_minimum_required( VERSION 2.6 )
 
 include( FindPkgConfig )
 include( CheckLibraryExists )
-pkg_check_modules( X11 REQUIRED x11 xcomposite xdamage xinerama xrender xrandr )
+pkg_check_modules( X11 REQUIRED x11 xcomposite xdamage xinerama xrender xrandr>=1.3 )
 pkg_check_modules( PANGOCAIRO REQUIRED pangocairo )
 pkg_check_modules( PANGO REQUIRED pango )
 pkg_check_modules( CAIRO REQUIRED cairo )
 pkg_check_modules( GLIB2 REQUIRED glib-2.0 )
 pkg_check_modules( GOBJECT2 REQUIRED gobject-2.0 )
-pkg_check_modules( IMLIB2 REQUIRED imlib2 )
+pkg_check_modules( IMLIB2 REQUIRED imlib2>=1.4.2 )
 find_library( RT_LIBRARY rt )
 
-if( NOT (X11_FOUND AND PANGOCAIRO_FOUND AND PANGO_FOUND AND CAIRO_FOUND AND GLIB2_FOUND AND GOBJECT2_FOUND AND IMLIB2_FOUND) )
+if( NOT X11_FOUND OR NOT PANGOCAIRO_FOUND OR NOT PANGO_FOUND OR NOT CAIRO_FOUND OR NOT GLIB2_FOUND OR NOT GOBJECT2_FOUND OR NOT IMLIB2_FOUND )
   message( FATAL_ERROR "Not all dependencies fulfilled. See http://code.google.com/p/tint2/wiki/Install" )
-endif( NOT (X11_FOUND AND PANGOCAIRO_FOUND AND PANGO_FOUND AND CAIRO_FOUND AND GLIB2_FOUND AND GOBJECT2_FOUND AND IMLIB2_FOUND) )
+endif( NOT X11_FOUND OR NOT PANGOCAIRO_FOUND OR NOT PANGO_FOUND OR NOT CAIRO_FOUND OR NOT GLIB2_FOUND OR NOT GOBJECT2_FOUND OR NOT IMLIB2_FOUND )
 
 string( REPLACE ";" " " FLAGS_REPLACED "${IMLIB2_LDFLAGS}" )
 set( CMAKE_REQUIRED_FLAGS "${FLAGS_REPLACED}" )
@@ -29,6 +29,7 @@ include_directories( ${PROJECT_BINARY_DIR}
                      src/clock
                      src/systray
                      src/taskbar
+                     src/launcher
                      src/tooltip
                      src/util
                      ${X11_INCLUDE_DIRS}
@@ -45,8 +46,12 @@ set( SOURCES src/config.c
              src/tint.c
              src/clock/clock.c
              src/systray/systraybar.c
+             src/launcher/launcher.c
+             src/launcher/xsettings-client.c
+             src/launcher/xsettings-common.c
              src/taskbar/task.c
              src/taskbar/taskbar.c
+             src/taskbar/taskbarname.c
              src/tooltip/tooltip.c
              src/util/area.c
              src/util/common.c
@@ -62,16 +67,16 @@ if( ENABLE_BATTERY )
   add_definitions( -DENABLE_BATTERY )
 endif( ENABLE_BATTERY )
 
+set( MANDIR share/man CACHE PATH "Directory for man pages" )
+set( DATADIR share CACHE PATH "Directory for shared data" )
+set( SYSCONFDIR /etc CACHE PATH "Directory for configuration files" )
+set( DOCDIR share/doc/tint2 CACHE PATH "Directory for documentation files" )
+
 if( ENABLE_TINT2CONF )
   add_definitions( -DHAVE_VERSION_H )
   add_subdirectory( src/tint2conf )
   add_dependencies( tint2conf version )
 endif( ENABLE_TINT2CONF )
-
-set( MANDIR share/man CACHE PATH "Directory for man pages" )
-set( DATADIR share CACHE PATH "Directory for shared data" )
-set( SYSCONFDIR /etc CACHE PATH "Directory for configuration files" )
-set( DOCDIR share/doc/tint2 CACHE PATH "Directory for documentation files" )
 
 add_custom_target( version ALL "${PROJECT_SOURCE_DIR}/get_svnrev.sh" "\"${PROJECT_SOURCE_DIR}\"" )
 

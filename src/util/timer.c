@@ -77,6 +77,10 @@ void cleanup_timeout()
 		free(t);
 		timeout_list = g_slist_remove(timeout_list, t);
 	}
+	if (multi_timeouts) {
+		g_hash_table_destroy(multi_timeouts);
+		multi_timeouts = 0;
+	}
 }
 
 /** Implementation notes for timeouts: The timeouts are kept in a GSList sorted by their
@@ -394,6 +398,7 @@ void remove_from_multi_timeout(timeout* t)
 
 	if (g_slist_length(mth->timeout_list) == 1) {
 		timeout* last_timeout = mth->timeout_list->data;
+		mth->timeout_list = g_slist_remove(mth->timeout_list, last_timeout);
 		free(last_timeout->multi_timeout);
 		last_timeout->multi_timeout = 0;
 		g_hash_table_remove(multi_timeouts, last_timeout);

@@ -2,7 +2,7 @@
 *
 * Tint2conf
 *
-* Copyright (C) 2009 Thierry lorthiois (lorthiois@bbsoft.fr)
+* Copyright (C) 2009 Thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -76,9 +76,9 @@ static const char *global_ui =
 	"      <menuitem action='ThemeSaveAs'/>"
 	"      <separator/>"
 	"      <menuitem action='ThemeDelete'/>"
-	"      <separator/>"
-//	"      <menuitem action='ThemeProperties'/>"
 //	"      <separator/>"
+//	"      <menuitem action='ThemeProperties'/>"
+	"      <separator/>"
 	"      <menuitem action='ThemeQuit'/>"
 	"    </menu>"
 	"    <menu action='EditMenu'>"
@@ -92,11 +92,11 @@ static const char *global_ui =
 	"    </menu>"
 	"  </menubar>"
 	"  <toolbar  name='ToolBar'>"
-	"    <toolitem action='ThemeProperties'/>"
+//	"    <toolitem action='ThemeProperties'/>"
 	"    <toolitem action='ViewApply'/>"
 	"  </toolbar>"
 	"  <popup  name='ThemePopup'>"
-	"    <menuitem action='ThemeProperties'/>"
+//	"    <menuitem action='ThemeProperties'/>"
 	"    <menuitem action='EditRefresh'/>"
 	"    <menuitem action='ViewApply'/>"
 	"    <separator/>"
@@ -132,6 +132,8 @@ int main (int argc, char ** argv)
 	g_thread_init( NULL );
 	read_config();
 	initTheme();
+	g_set_application_name (_("tint2conf"));
+	gtk_window_set_default_icon_name("taskbar");
 
 	// define main layout : container, menubar, toolbar
 	g_window = gtk_window_new (GTK_WINDOW_TOPLEVEL);
@@ -164,10 +166,6 @@ int main (int argc, char ** argv)
 	// load themes
 	load_theme(g_theme_view);
 
-	/* temporaire !!!!!!!!!!!!!!
-	GtkWidget *prop = create_properties();
-	gtk_window_present(GTK_WINDOW(prop));
-	//*/
 	gtk_widget_show_all(g_window);
 	gtk_main ();
 	return 0;
@@ -189,7 +187,7 @@ static void menuAbout()
 								"comments", _("Theming tool for tint2 panel"),
 								"version", VERSION_STRING,
 								"copyright", _("Copyright 2009 tint2 team\nTint2 License GNU GPL version 2\nTintwizard License GNU GPL version 3"),
-								"logo-icon-name", NULL, "authors", authors,
+								"logo-icon-name", "taskbar", "authors", authors,
 								/* Translators: translate "translator-credits" as
 									your name to have it appear in the credits in the "About"
 									dialog */
@@ -329,22 +327,23 @@ static void menuProperties()
 	GtkTreeSelection *sel;
 	GtkTreeIter iter;
 	GtkTreeModel *model;
-	char *file, *cmd;
+	char *file;
 
 	sel = gtk_tree_view_get_selection(GTK_TREE_VIEW(g_theme_view));
 	if (gtk_tree_selection_get_selected(GTK_TREE_SELECTION(sel), &model, &iter)) {
 		gtk_tree_model_get(model, &iter, COL_THEME_FILE, &file,  -1);
-/*
+//*
 		GtkWidget *prop;
 		prop = create_properties();
 		gtk_window_present(GTK_WINDOW(prop));
 		//printf("menuProperties : fin\n");
-*/
-
-		cmd = g_strdup_printf("%s \'%s\' &", g_cmd_property, file);
+//*/
+/*
+		char *cmd = g_strdup_printf("%s \'%s\' &", g_cmd_property, file);
 		printf("cmd %s\n", cmd);
 		system(cmd);
 		g_free(cmd);
+		//*/
 		g_free(file);
 		
 	}
@@ -580,7 +579,7 @@ void read_config()
 	}
 	g_width = 500;
 	g_height = 350;
-	g_cmd_property = g_strconcat( "python ", INSTALL_PREFIX, "/bin/tintwizard.py", (void*)0 );
+	g_cmd_property = g_strconcat( "/usr/bin/env python ", INSTALL_PREFIX, "/bin/tintwizard.py", (void*)0 );
 
 	// load config
 	path = g_build_filename (g_get_user_config_dir(), "tint2", "tint2confrc", NULL);

@@ -19,6 +19,7 @@
 #include "task.h"
 #include "taskbar.h"
 #include "systraybar.h"
+#include "launcher.h"
 
 #ifdef ENABLE_BATTERY
 #include "battery.h"
@@ -58,6 +59,7 @@ extern int panel_autohide_show_timeout;
 extern int panel_autohide_hide_timeout;
 extern int panel_autohide_height;  // for vertical panels this is of course the width
 extern int panel_strut_policy;
+extern char *panel_items_order;
 
 extern int  max_tick_urgent;
 
@@ -107,6 +109,8 @@ typedef struct {
 	Battery battery;
 #endif
 
+	Launcher launcher;
+
 	// autohide
 	int is_hidden;
 	int hidden_width, hidden_height;
@@ -131,10 +135,10 @@ void cleanup_panel();
 void init_panel();
 
 void init_panel_size_and_position(Panel *panel);
-void resize_panel(void *obj);
+int  resize_panel(void *obj);
 
+void set_panel_items_order(Panel *p);
 void set_panel_properties(Panel *p);
-void visible_object();
 
 // draw background panel
 void set_panel_background(Panel *p);
@@ -144,6 +148,8 @@ Panel *get_panel(Window win);
 
 Taskbar *click_taskbar (Panel *panel, int x, int y);
 Task *click_task (Panel *panel, int x, int y);
+Launcher *click_launcher (Panel *panel, int x, int y);
+LauncherIcon *click_launcher_icon (Panel *panel, int x, int y);
 int click_padding(Panel *panel, int x, int y);
 int click_clock(Panel *panel, int x, int y);
 Area* click_area(Panel *panel, int x, int y);

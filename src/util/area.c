@@ -2,7 +2,7 @@
 *
 * Tint2 : area
 *
-* Copyright (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Copyright (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -31,24 +31,183 @@
 #include "panel.h"
 
 
-// 1) resize child
-// 2) resize parent
-// 3) redraw parent
-// 4) redraw child
+/************************************************************
+ * !!! This design is experimental and not yet fully implemented !!!!!!!!!!!!!
+ * 
+ * DATA ORGANISATION :
+ * Areas in tint2 are similar to widgets in a GUI. 
+ * All graphical objects (panel, taskbar, task, systray, clock, ...) 'inherit' an abstract class 'Area'.
+ * This class 'Area' manage the background, border, size, position and padding.
+ * Area is at the begining of each object (&object == &area).
+ * 
+ * tint2 define one panel per monitor. And each panel have a tree of Area.
+ * The root of the tree is Panel.Area. And task, clock, systray, taskbar,... are nodes.
+ * 
+ * The tree give the localisation of each object :
+ * - tree's root is in the background while tree's leafe are foreground objects
+ * - position of a node/Area depend on the layout : parent's position (posx, posy), size of previous brothers and parent's padding
+ * - size of a node/Area depend on the content (SIZE_BY_CONTENT objects) or on the layout (SIZE_BY_LAYOUT objects) 
+ * 
+ * DRAWING AND LAYERING ENGINE :
+ * Redrawing an object (like the clock) could come from an 'external event' (date change) 
+ * or from a 'layering event' (position change).
+ * The following 'drawing engine' take care of :
+ * - posx/posy of all Area
+ * - 'layering event' propagation between object
+ * 1) browse tree SIZE_BY_CONTENT
+ *  - resize SIZE_BY_CONTENT node : children are resized before parent
+ * 	- if 'size' changed then 'resize = 1' on the parent
+ * 2) browse tree SIZE_BY_LAYOUT and POSITION
+ *  - resize SIZE_BY_LAYOUT node : parent is resized before children
+ *  - calculate position (posx,posy) : parent is calculated before children
+ * 	- if 'position' changed then 'redraw = 1'
+ * 3) browse tree REDRAW
+ *  - redraw needed objects : parent is drawn before children
+ *
+ * CONFIGURE PANEL'S LAYOUT :
+ * 'panel_items' parameter (in config) define the list and the order of nodes in tree's panel.
+ * 'panel_items = SC' define a panel with just Systray and Clock.
+ * So the tree 'Panel.Area' will have 2 childs (Systray and Clock).
+ *
+ ************************************************************/
+
+void init_rendering(void *obj, int pos)
+{
+	Area *a = (Area*)obj;
+	
+	// initialize fixed position/size
+	GSList *l;
+	for (l = a->list; l ; l = l->next) {
+		Area *child = ((Area*)l->data);
+		if (panel_horizontal) {
+			child->posy = pos + a->bg->border.width + a->paddingy;
+			child->height = a->height - (2 * (a->bg->border.width + a->paddingy));
+			init_rendering(child, child->posy);
+		}
+		else {
+			child->posx = pos + a->bg->border.width + a->paddingy;
+			child->width = a->width - (2 * (a->bg->border.width + a->paddingy));
+			init_rendering(child, child->posx);
+		}
+	}
+}
+
+
+void rendering(void *obj)
+{
+	Panel *panel = (Panel*)obj;
+
+	size_by_content(&panel->area);
+	size_by_layout(&panel->area, 0, 1);
+	
+	refresh(&panel->area);
+}
+
+
+void size_by_content (Area *a)
+{
+	// don't resize hiden objects
+	if (!a->on_screen) return;
+
+	// children node are resized before its parent
+	GSList *l;
+	for (l = a->list; l ; l = l->next)
+		size_by_content(l->data);
+	
+	// calculate area's size
+	a->on_changed = 0;
+	if (a->resize && a->size_mode == SIZE_BY_CONTENT) {
+		a->resize = 0;
+
+		if (a->_resize) {
+			if (a->_resize(a)) {
+				// 'size' changed => 'resize = 1' on the parent
+				((Area*)a->parent)->resize = 1;
+				a->on_changed = 1;
+			}
+		}
+	}
+}
+
+
+void size_by_layout (Area *a, int pos, int level)
+{
+	// don't resize hiden objects
+	if (!a->on_screen) return;
+
+	// parent node is resized before its children
+	// calculate area's size
+	GSList *l;
+	if (a->resize && a->size_mode == SIZE_BY_LAYOUT) {
+		a->resize = 0;
+
+		if (a->_resize) {
+			a->_resize(a);
+			// resize childs with SIZE_BY_LAYOUT
+			for (l = a->list; l ; l = l->next) {
+				Area *child = ((Area*)l->data);
+				if (child->size_mode == SIZE_BY_LAYOUT && child->list)
+					child->resize = 1;
+			}
+		}
+	}
+
+	// update position of childs
+	pos += a->paddingxlr + a->bg->border.width;
+	int i=0;
+	for (l = a->list; l ; l = l->next) {
+		Area *child = ((Area*)l->data);
+		if (!child->on_screen) continue;
+		i++;
+		
+		if (panel_horizontal) {
+			if (pos != child->posx) {
+				// pos changed => redraw
+				child->posx = pos;
+				child->on_changed = 1;
+			}
+		}
+		else {
+			if (pos != child->posy) {
+				// pos changed => redraw
+				child->posy = pos;
+				child->on_changed = 1;
+			}
+		}
+		
+		/*// position of each visible object
+		int k;
+		for (k=0 ; k < level ; k++) printf("  ");
+		printf("tree level %d, object %d, pos %d, %s\n", level, i, pos, (child->size_mode == SIZE_BY_LAYOUT) ? "SIZE_BY_LAYOUT" : "SIZE_BY_CONTENT");*/
+		size_by_layout(child, pos, level+1);
+		
+		if (panel_horizontal)
+			pos += child->width + a->paddingx;
+		else
+			pos += child->height + a->paddingx;
+	}	
+
+	if (a->on_changed) {
+		// pos/size changed
+		a->redraw = 1;
+		if (a->_on_change_layout)
+			a->_on_change_layout (a);
+	}
+}
+
+
 void refresh (Area *a)
 {
 	// don't draw and resize hide objects
 	if (!a->on_screen) return;
 
-	size(a);
-
 	// don't draw transparent objects (without foreground and without background)
 	if (a->redraw) {
 		a->redraw = 0;
 		// force redraw of child
-		GSList *l;
-		for (l = a->list ; l ; l = l->next)
-			set_redraw(l->data);
+		//GSList *l;
+		//for (l = a->list ; l ; l = l->next)
+			//((Area*)l->data)->redraw = 1;
 
 		//printf("draw area posx %d, width %d\n", a->posx, a->width);
 		draw(a);
@@ -65,23 +224,95 @@ void refresh (Area *a)
 }
 
 
-void size (Area *a)
+int resize_by_layout(void *obj, int maximum_size)
 {
-	GSList *l;
+	Area *child, *a = (Area*)obj;
+	int size, nb_by_content=0, nb_by_layout=0;
 
-	if (a->resize) {
-		a->resize = 0;
-		// force the resize of childs
-		for (l = a->list; l ; l = l->next) {
-			Area *area = (Area*)l->data;
-			area->resize = 1;
-			size(area);
+	if (panel_horizontal) {		
+		// detect free size for SIZE_BY_LAYOUT's Area
+		size = a->width - (2 * (a->paddingxlr + a->bg->border.width));
+		GSList *l;
+		for (l = a->list ; l ; l = l->next) {
+			child = (Area*)l->data;
+			if (child->on_screen && child->size_mode == SIZE_BY_CONTENT) {
+				size -= child->width;
+				nb_by_content++;
+			}
+			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT)
+				nb_by_layout++;
+		}
+		//printf("  resize_by_layout Deb %d, %d\n", nb_by_content, nb_by_layout);
+		if (nb_by_content+nb_by_layout)
+			size -= ((nb_by_content+nb_by_layout-1) * a->paddingx);
+
+		int width=0, modulo=0, old_width;
+		if (nb_by_layout) {
+			width = size / nb_by_layout;
+			modulo = size % nb_by_layout;
+			if (width > maximum_size && maximum_size != 0) {
+				width = maximum_size;
+				modulo = 0;
+			}
 		}
 
-		// resize can generate a redraw
-		if (a->_resize)
-			a->_resize(a);
+		// resize SIZE_BY_LAYOUT objects
+		for (l = a->list ; l ; l = l->next) {
+			child = (Area*)l->data;
+			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT) {
+				old_width = child->width;
+				child->width = width;
+				if (modulo) {
+					child->width++;
+					modulo--;
+				}
+				if (child->width != old_width)
+					child->on_changed = 1;
+			}
+		}
 	}
+	else {
+		// detect free size for SIZE_BY_LAYOUT's Area
+		size = a->height - (2 * (a->paddingxlr + a->bg->border.width));
+		GSList *l;
+		for (l = a->list ; l ; l = l->next) {
+			child = (Area*)l->data;
+			if (child->on_screen && child->size_mode == SIZE_BY_CONTENT) {
+				size -= child->height;
+				nb_by_content++;
+			}
+			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT)
+				nb_by_layout++;
+		}
+		if (nb_by_content+nb_by_layout)
+			size -= ((nb_by_content+nb_by_layout-1) * a->paddingx);
+
+		int height=0, modulo=0, old_height;
+		if (nb_by_layout) {
+			height = size / nb_by_layout;
+			modulo = size % nb_by_layout;
+			if (height > maximum_size && maximum_size != 0) {
+				height = maximum_size;
+				modulo = 0;
+			}
+		}
+
+		// resize SIZE_BY_LAYOUT objects
+		for (l = a->list ; l ; l = l->next) {
+			child = (Area*)l->data;
+			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT) {
+				old_height = child->height;
+				child->height = height;
+				if (modulo) {
+					child->height++;
+					modulo--;
+				}
+				if (child->height != old_height)
+					child->on_changed = 1;
+			}
+		}
+	}
+	return 0;
 }
 
 
@@ -94,6 +325,26 @@ void set_redraw (Area *a)
 		set_redraw(l->data);
 }
 
+void hide(Area *a)
+{
+	Area *parent = (Area*)a->parent;
+
+	a->on_screen = 0;
+	parent->resize = 1;
+	if (panel_horizontal)
+		a->width = 0;
+	else
+		a->height = 0;
+}
+
+void show(Area *a)
+{
+	Area *parent = (Area*)a->parent;
+
+	a->on_screen = 1;
+	parent->resize = 1;
+	a->resize = 1;
+}
 
 void draw (Area *a)
 {
@@ -137,9 +388,9 @@ void draw_background (Area *a, cairo_t *c)
 		draw_rect(c, a->bg->border.width/2.0, a->bg->border.width/2.0, a->width - a->bg->border.width, a->height - a->bg->border.width, a->bg->border.rounded);
 		/*
 		// convert : radian = degre * M_PI/180
-		// définir le dégradé dans un carré de (0,0) (100,100)
-		// ensuite ce dégradé est extrapolé selon le ratio width/height
-		// dans repère (0, 0) (100, 100)
+		// definir le degrade dans un carre de (0,0) (100,100)
+		// ensuite ce degrade est extrapoler selon le ratio width/height
+		// dans repere (0, 0) (100, 100)
 		double X0, Y0, X1, Y1, degre;
 		// x = X * (a->width / 100), y = Y * (a->height / 100)
 		double x0, y0, x1, y1;
@@ -148,13 +399,13 @@ void draw_background (Area *a, cairo_t *c)
 		X1 = 100;
 		Y1 = 0;
 		degre = 45;
-		// et ensuite faire la changement d'unité du repère
-		// car ce qui doit resté inchangée est les traits et pas la direction
+		// et ensuite faire la changement d'unite du repere
+		// car ce qui doit reste inchangee est les traits et pas la direction
 
-		// il faut d'abord appliquer une rotation de 90° (et -180° si l'angle est supérieur à 180°)
-		// ceci peut être appliqué une fois pour toute au départ
-		// ensuite calculer l'angle dans le nouveau repère
-		// puis faire une rotation de 90°
+		// il faut d'abord appliquer une rotation de 90 (et -180 si l'angle est superieur a  180)
+		// ceci peut etre applique une fois pour toute au depart
+		// ensuite calculer l'angle dans le nouveau repare
+		// puis faire une rotation de 90
 		x0 = X0 * ((double)a->width / 100);
 		x1 = X1 * ((double)a->width / 100);
 		y0 = Y0 * ((double)a->height / 100);

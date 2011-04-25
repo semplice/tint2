@@ -3,7 +3,7 @@
 * Tint2 panel
 *
 * Copyright (C) 2007 Pål Staurland (staura@gmail.com)
-* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -38,9 +38,11 @@
 #include "task.h"
 #include "taskbar.h"
 #include "systraybar.h"
+#include "launcher.h"
 #include "panel.h"
 #include "tooltip.h"
 #include "timer.h"
+#include "xsettings-client.h"
 
 
 void signal_handler(int sig)
@@ -63,6 +65,7 @@ void init (int argc, char *argv[])
 	default_battery();
 #endif
 	default_clock();
+	default_launcher();
 	default_taskbar();
 	default_tooltip();
 	default_panel();
@@ -91,11 +94,12 @@ void init (int argc, char *argv[])
 	// Set signal handler
 	signal_pending = 0;
 	struct sigaction sa = { .sa_handler = signal_handler };
+	struct sigaction sa_chld = { .sa_handler = SIG_DFL, .sa_flags = SA_NOCLDWAIT };
 	sigaction(SIGUSR1, &sa, 0);
 	sigaction(SIGINT, &sa, 0);
 	sigaction(SIGTERM, &sa, 0);
 	sigaction(SIGHUP, &sa, 0);
-//	signal(SIGCHLD, SIG_IGN);		// don't have to wait() after fork()
+	sigaction(SIGCHLD, &sa_chld, 0);
 
 	// BSD does not support pselect(), therefore we have to use select and hope that we do not
 	// end up in a race condition there (see 'man select()' on a linux machine for more information)
@@ -132,7 +136,7 @@ void init_X11()
 	setlocale (LC_ALL, "");
 	// config file use '.' as decimal separator
 	setlocale(LC_NUMERIC, "POSIX");
-
+	
 	// load default icon
 	gchar *path;
 	const gchar * const *data_dirs;
@@ -153,14 +157,14 @@ void init_X11()
 
 void cleanup()
 {
-	cleanup_timeout();
 	cleanup_systray();
-	cleanup_panel();
 	cleanup_tooltip();
 	cleanup_clock();
+	cleanup_launcher();
 #ifdef ENABLE_BATTERY
 	cleanup_battery();
 #endif
+	cleanup_panel();
 	cleanup_config();
 
 	if (default_icon) {
@@ -170,6 +174,7 @@ void cleanup()
 	imlib_context_disconnect_display();
 
 	cleanup_server();
+	cleanup_timeout();
 	if (server.dsp) XCloseDisplay(server.dsp);
 }
 
@@ -182,7 +187,7 @@ void get_snapshot(const char *path)
 		panel->area.width = server.monitor[0].width;
 
 	panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
-	refresh(&panel->area);
+	rendering(panel);
 
 	Imlib_Image img = NULL;
 	imlib_context_set_drawable(panel->temp_pmap);
@@ -277,7 +282,15 @@ int tint2_handles_click(Panel* panel, XButtonEvent* e)
 		else
 			return 0;
 	}
-	// no task clicked --> check if taskbar clicked
+	LauncherIcon *icon = click_launcher_icon(panel, e->x, e->y);
+	if (icon) {
+		if (e->button == 1) {
+			return 1;
+		} else {
+			return 0;
+		}
+	}
+	// no launcher/task clicked --> check if taskbar clicked
 	Taskbar *tskbar = click_taskbar(panel, e->x, e->y);
 	if (tskbar && e->button == 1 && panel_mode == MULTI_DESKTOP)
 		return 1;
@@ -359,8 +372,10 @@ void event_button_motion_notify (XEvent *e)
 		Taskbar * drag_taskbar = (Taskbar*)task_drag->area.parent;
 		drag_taskbar->area.list = g_slist_remove(drag_taskbar->area.list, task_drag);
 
-		if(event_taskbar->area.posx > drag_taskbar->area.posx || event_taskbar->area.posy > drag_taskbar->area.posy)
-			event_taskbar->area.list = g_slist_prepend(event_taskbar->area.list, task_drag);
+		if(event_taskbar->area.posx > drag_taskbar->area.posx || event_taskbar->area.posy > drag_taskbar->area.posy) {
+			int i = (taskbarname_enabled) ? 1 : 0;
+			event_taskbar->area.list = g_slist_insert(event_taskbar->area.list, task_drag, i);
+		}
 		else
 			event_taskbar->area.list = g_slist_append(event_taskbar->area.list, task_drag);
 
@@ -420,6 +435,15 @@ void event_button_release (XEvent *e)
 		return;
 	}
 
+	if ( click_launcher(panel, e->xbutton.x, e->xbutton.y)) {
+		LauncherIcon *icon = click_launcher_icon(panel, e->xbutton.x, e->xbutton.y);
+		if (icon) {
+			launcher_action(icon);
+		}
+		task_drag = 0;
+		return;
+	}
+
 	Taskbar *tskbar;
 	if ( !(tskbar = click_taskbar(panel, e->xbutton.x, e->xbutton.y)) ) {
 		// TODO: check better solution to keep window below
@@ -458,19 +482,57 @@ void event_property_notify (XEvent *e)
 	Window win = e->xproperty.window;
 	Atom at = e->xproperty.atom;
 
+	if (xsettings_client)
+		xsettings_client_process_event(xsettings_client, e);
 	if (win == server.root_win) {
 		if (!server.got_root_win) {
 			XSelectInput (server.dsp, server.root_win, PropertyChangeMask|StructureNotifyMask);
 			server.got_root_win = 1;
 		}
 
+		// Change name of desktops
+		else if (at == server.atom._NET_DESKTOP_NAMES) {
+			if (!taskbarname_enabled) return;
+			GSList *l, *list = server_get_name_of_desktop();
+			int j;
+			gchar *name;
+			Taskbar *tskbar;
+			for (i=0 ; i < nb_panel ; i++) {
+				for (j=0, l=list ; j < panel1[i].nb_desktop ; j++) {
+					if (l) {
+						name = g_strdup(l->data);
+						l = l->next;
+					}
+					else
+						name = g_strdup_printf("%d", j+1);
+					tskbar = &panel1[i].taskbar[j];
+					if (strcmp(name, tskbar->bar_name.name) != 0) {
+						g_free(tskbar->bar_name.name);
+						tskbar->bar_name.name = name;
+						tskbar->bar_name.area.resize = 1;
+					}
+					else
+						g_free(name);
+				}
+			}
+			for (l=list ; l ; l = l->next)
+				g_free(l->data);
+			g_slist_free(list);
+			panel_refresh = 1;
+		}
 		// Change number of desktops
 		else if (at == server.atom._NET_NUMBER_OF_DESKTOPS) {
+			if (!taskbar_enabled) return;
 			server.nb_desktop = server_get_number_of_desktop ();
+			if (server.nb_desktop <= server.desktop) {
+				server.desktop = server.nb_desktop-1;
+			}
 			cleanup_taskbar();
 			init_taskbar();
-			visible_object();
 			for (i=0 ; i < nb_panel ; i++) {
+				init_taskbar_panel(&panel1[i]);
+				set_panel_items_order(&panel1[i]);
+				visible_taskbar(&panel1[i]);
 				panel1[i].area.resize = 1;
 			}
 			task_refresh_tasklist();
@@ -479,28 +541,22 @@ void event_property_notify (XEvent *e)
 		}
 		// Change desktop
 		else if (at == server.atom._NET_CURRENT_DESKTOP) {
+			if (!taskbar_enabled) return;
 			int old_desktop = server.desktop;
 			server.desktop = server_get_current_desktop ();
 			for (i=0 ; i < nb_panel ; i++) {
 				Panel *panel = &panel1[i];
-				if (panel_mode == MULTI_DESKTOP && panel->g_taskbar.use_active) {
-					// redraw both taskbar
-					if (server.nb_desktop > old_desktop) {
-						// can happen if last desktop is deleted and we've been on the last desktop
-						panel->taskbar[old_desktop].area.bg = panel->g_taskbar.bg;
-						panel->taskbar[old_desktop].area.resize = 1;
-					}
-					panel->taskbar[server.desktop].area.bg = panel->g_taskbar.bg_active;
-					panel->taskbar[server.desktop].area.resize = 1;
-					panel_refresh = 1;
-				}
+				set_taskbar_state(&panel->taskbar[old_desktop], TASKBAR_NORMAL);
+				set_taskbar_state(&panel->taskbar[server.desktop], TASKBAR_ACTIVE);
 				// check ALLDESKTOP task => resize taskbar
 				Taskbar *tskbar;
 				Task *tsk;
 				GSList *l;
 				if (server.nb_desktop > old_desktop) {
 					tskbar = &panel->taskbar[old_desktop];
-					for (l = tskbar->area.list; l ; l = l->next) {
+					l = tskbar->area.list;
+					if (taskbarname_enabled) l = l->next;
+					for (; l ; l = l->next) {
 						tsk = l->data;
 						if (tsk->desktop == ALLDESKTOP) {
 							tsk->area.on_screen = 0;
@@ -510,16 +566,15 @@ void event_property_notify (XEvent *e)
 					}
 				}
 				tskbar = &panel->taskbar[server.desktop];
-				for (l = tskbar->area.list; l ; l = l->next) {
+				l = tskbar->area.list;
+				if (taskbarname_enabled) l = l->next;
+				for (; l ; l = l->next) {
 					tsk = l->data;
 					if (tsk->desktop == ALLDESKTOP) {
 						tsk->area.on_screen = 1;
 						tskbar->area.resize = 1;
 					}
 				}
-			}
-			if (panel_mode != MULTI_DESKTOP) {
-				visible_object();
 			}
 		}
 		// Window list
@@ -532,7 +587,7 @@ void event_property_notify (XEvent *e)
 			active_task();
 			panel_refresh = 1;
 		}
-		else if (at == server.atom._XROOTPMAP_ID) {
+		else if (at == server.atom._XROOTPMAP_ID || at == server.atom._XROOTMAP_ID) {
 			// change Wallpaper
 			for (i=0 ; i < nb_panel ; i++) {
 				set_panel_background(&panel1[i]);
@@ -564,12 +619,13 @@ void event_property_notify (XEvent *e)
 
 		// Window title changed
 		if (at == server.atom._NET_WM_VISIBLE_NAME || at == server.atom._NET_WM_NAME || at == server.atom.WM_NAME) {
-			get_title(tsk);
-			if (g_tooltip.mapped && (g_tooltip.area == (Area*)tsk)) {
-				tooltip_copy_text((Area*)tsk);
-				tooltip_update();
+			if (get_title(tsk)) {
+				if (g_tooltip.mapped && (g_tooltip.area == (Area*)tsk)) {
+					tooltip_copy_text((Area*)tsk);
+					tooltip_update();
+				}
+				panel_refresh = 1;
 			}
-			panel_refresh = 1;
 		}
 		// Demand attention
 		else if (at == server.atom._NET_WM_STATE) {
@@ -754,7 +810,7 @@ start:
 				else {
 					if (panel->temp_pmap) XFreePixmap(server.dsp, panel->temp_pmap);
 					panel->temp_pmap = XCreatePixmap(server.dsp, server.root_win, panel->area.width, panel->area.height, server.depth);
-					refresh(&panel->area);
+					rendering(panel);
 					XCopyArea(server.dsp, panel->temp_pmap, panel->main_win, server.gc, 0, 0, panel->area.width, panel->area.height, 0, 0);
 				}
 			}
@@ -820,19 +876,17 @@ start:
 						if (e.xmotion.state & button_mask)
 							event_button_motion_notify (&e);
 
-						if (!g_tooltip.enabled) break;
 						Panel* panel = get_panel(e.xmotion.window);
 						Area* area = click_area(panel, e.xmotion.x, e.xmotion.y);
 						if (area->_get_tooltip_text)
-							tooltip_trigger_show(area, panel, e.xmotion.x_root, e.xmotion.y_root);
+							tooltip_trigger_show(area, panel, &e);
 						else
 							tooltip_trigger_hide();
 						break;
 					}
 
 					case LeaveNotify:
-						if (g_tooltip.enabled)
-							tooltip_trigger_hide();
+						tooltip_trigger_hide();
 						break;
 
 					case Expose:
@@ -862,7 +916,7 @@ start:
 							signal_pending = SIGUSR1;
 							break;
 						}
-						if (e.xany.window == g_tooltip.window || !systray.area.on_screen)
+						if (e.xany.window == g_tooltip.window || !systray_enabled)
 							break;
 						for (it = systray.list_icons; it; it = g_slist_next(it)) {
 							if (((TrayWindow*)it->data)->tray_id == e.xany.window) {
@@ -870,7 +924,7 @@ start:
 								break;
 							}
 						}
-					break;
+						break;
 
 					case ClientMessage:
 						ev = &e.xclient;
@@ -882,7 +936,7 @@ start:
 								// Start real_transparency
 								signal_pending = SIGUSR1;
 						}
-						if (systray.area.on_screen && e.xclient.message_type == server.atom._NET_SYSTEM_TRAY_OPCODE && e.xclient.format == 32 && e.xclient.window == net_sel_win) {
+						if (systray_enabled && e.xclient.message_type == server.atom._NET_SYSTEM_TRAY_OPCODE && e.xclient.format == 32 && e.xclient.window == net_sel_win) {
 							net_message(&e.xclient);
 						}
 						else if (e.xclient.message_type == server.atom.XdndPosition) {

@@ -1,7 +1,7 @@
 /**************************************************************************
 *
 * Copyright (C) 2008 Pål Staurland (staura@gmail.com)
-* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr)
+* Modified (C) 2008 thierry lorthiois (lorthiois@bbsoft.fr) from Omega distribution
 *
 * This program is free software; you can redistribute it and/or
 * modify it under the terms of the GNU General Public License version 2
@@ -58,6 +58,7 @@ int panel_autohide_show_timeout;
 int panel_autohide_hide_timeout;
 int panel_autohide_height;
 int panel_strut_policy;
+char *panel_items_order;
 
 int  max_tick_urgent;
 
@@ -79,6 +80,7 @@ void default_panel()
 	task_dragged = 0;
 	panel_horizontal = 1;
 	panel_position = CENTER;
+	panel_items_order = 0;
 	panel_autohide = 0;
 	panel_autohide_show_timeout = 0;
 	panel_autohide_hide_timeout = 0;
@@ -87,7 +89,7 @@ void default_panel()
 	panel_dock = 0;  // default not in the dock
 	panel_layer = BOTTOM_LAYER;  // default is bottom layer
 	wm_menu = 0;
-	max_tick_urgent = 7;
+	max_tick_urgent = 14;
 	backgrounds = g_array_new(0, 0, sizeof(Background));
 
 	memset(&panel_config, 0, sizeof(Panel));
@@ -103,6 +105,8 @@ void cleanup_panel()
 	if (!panel1) return;
 
 	cleanup_taskbar();
+	// taskbarname_font_desc freed here because cleanup_taskbarname() called on _NET_NUMBER_OF_DESKTOPS
+	if (taskbarname_font_desc)	pango_font_description_free(taskbarname_font_desc);
 
 	int i;
 	Panel *p;
@@ -115,6 +119,7 @@ void cleanup_panel()
 		if (p->main_win) XDestroyWindow(server.dsp, p->main_win);
 	}
 
+	if (panel_items_order) g_free(panel_items_order);
 	if (panel1) free(panel1);
 	if (backgrounds)
 		g_array_free(backgrounds, 1);
@@ -123,7 +128,7 @@ void cleanup_panel()
 
 void init_panel()
 {
-	int i;
+	int i, k;
 	Panel *p;
 
 	if (panel_config.monitor > (server.nb_monitor-1)) {
@@ -134,10 +139,12 @@ void init_panel()
 
 	init_tooltip();
 	init_systray();
+	init_launcher();
 	init_clock();
 #ifdef ENABLE_BATTERY
 	init_battery();
 #endif
+	init_taskbar();
 
 	// number of panels (one monitor or 'all' monitors)
 	if (panel_config.monitor >= 0)
@@ -156,32 +163,35 @@ void init_panel()
 
 		if (panel_config.monitor < 0)
 			p->monitor = i;
+		if ( p->area.bg == 0 )
+			p->area.bg = &g_array_index(backgrounds, Background, 0);
 		p->area.parent = p;
 		p->area.panel = p;
 		p->area.on_screen = 1;
 		p->area.resize = 1;
+		p->area.size_mode = SIZE_BY_LAYOUT;
 		p->area._resize = resize_panel;
-		p->g_taskbar.area.parent = p;
-		p->g_taskbar.area.panel = p;
-		p->g_task.area.panel = p;
 		init_panel_size_and_position(p);
-		// add childs
-		if (clock_enabled) {
-			init_clock_panel(p);
-			p->area.list = g_slist_append(p->area.list, &p->clock);
-		}
+		// add childs according to panel_items
+		for (k=0 ; k < strlen(panel_items_order) ; k++) {
+			if (panel_items_order[k] == 'L') 
+				init_launcher_panel(p);
+			if (panel_items_order[k] == 'T')
+				init_taskbar_panel(p);
 #ifdef ENABLE_BATTERY
-		if (battery_enabled) {
-			init_battery_panel(p);
-			p->area.list = g_slist_append(p->area.list, &p->battery);
-		}
+			if (panel_items_order[k] == 'B')
+				init_battery_panel(p);
 #endif
-		// systray only on first panel
-		if (systray.area.on_screen && i == 0) {
-			init_systray_panel(p);
-			p->area.list = g_slist_append(p->area.list, &systray);
-			refresh_systray = 1;
+			if (panel_items_order[k] == 'S' && i==0) {
+				// TODO : check systray is only on 1 panel
+				// at the moment only on panel1[0] allowed
+				init_systray_panel(p);
+				refresh_systray = 1;
+			}
+			if (panel_items_order[k] == 'C')
+				init_clock_panel(p);
 		}
+		set_panel_items_order(p);
 
 		// catch some events
 		XSetWindowAttributes att = { .colormap=server.colormap, .background_pixel=0, .border_pixel=0 };
@@ -189,7 +199,7 @@ void init_panel()
 		p->main_win = XCreateWindow(server.dsp, server.root_win, p->posx, p->posy, p->area.width, p->area.height, 0, server.depth, InputOutput, server.visual, mask, &att);
 
 		long event_mask = ExposureMask|ButtonPressMask|ButtonReleaseMask|ButtonMotionMask;
-		if (g_tooltip.enabled)
+		if (p->g_task.tooltip_enabled || p->clock.area._get_tooltip_text)
 			event_mask |= PointerMotionMask|LeaveWindowMask;
 		if (panel_autohide)
 			event_mask |= LeaveWindowMask|EnterWindowMask;
@@ -209,11 +219,10 @@ void init_panel()
 
 		if (panel_autohide)
 			add_timeout(panel_autohide_hide_timeout, 0, autohide_hide, p);
+		
+		visible_taskbar(p);
 	}
 
-	panel_refresh = 1;
-	init_taskbar();
-	visible_object();
 	task_refresh_tasklist();
 	active_task();
 }
@@ -227,6 +236,8 @@ void init_panel_size_and_position(Panel *panel)
 			panel->area.width = (float)server.monitor[panel->monitor].width * panel->area.width / 100;
 		if (panel->pourcenty)
 			panel->area.height = (float)server.monitor[panel->monitor].height * panel->area.height / 100;
+		if (panel->area.width + panel->marginx > server.monitor[panel->monitor].width)
+			panel->area.width = server.monitor[panel->monitor].width - panel->marginx;
 		if (panel->area.bg->border.rounded > panel->area.height/2) {
 			printf("panel_background_id rounded is too big... please fix your tint2rc\n");
 			g_array_append_val(backgrounds, *panel->area.bg);
@@ -244,6 +255,8 @@ void init_panel_size_and_position(Panel *panel)
 			panel->area.width = (float)server.monitor[panel->monitor].width * old_panel_height / 100;
 		else
 			panel->area.width = old_panel_height;
+		if (panel->area.height + panel->marginy > server.monitor[panel->monitor].height)
+			panel->area.height = server.monitor[panel->monitor].height - panel->marginy;
 		if (panel->area.bg->border.rounded > panel->area.width/2) {
 			printf("panel_background_id rounded is too big... please fix your tint2rc\n");
 			g_array_append_val(backgrounds, *panel->area.bg);
@@ -293,106 +306,26 @@ void init_panel_size_and_position(Panel *panel)
 }
 
 
-void resize_panel(void *obj)
+int resize_panel(void *obj)
 {
-	Panel *panel = (Panel*)obj;
-
-	if (panel_horizontal) {
-		int taskbar_width, modulo_width = 0;
-
-		taskbar_width = panel->area.width - (2 * panel->area.paddingxlr) - (2 * panel->area.bg->border.width);
-		if (panel->clock.area.on_screen && panel->clock.area.width)
-			taskbar_width -= (panel->clock.area.width + panel->area.paddingx);
-	#ifdef ENABLE_BATTERY
-		if (panel->battery.area.on_screen && panel->battery.area.width)
-			taskbar_width -= (panel->battery.area.width + panel->area.paddingx);
-	#endif
-		// TODO : systray only on first panel. search better implementation !
-		if (systray.area.on_screen && systray.area.width && panel == &panel1[0])
-			taskbar_width -= (systray.area.width + panel->area.paddingx);
-
-		if (panel_mode == MULTI_DESKTOP) {
-			int width = taskbar_width - ((panel->nb_desktop-1) * panel->area.paddingx);
-			taskbar_width = width / panel->nb_desktop;
-			modulo_width = width % panel->nb_desktop;
-		}
-
-		// change posx and width for all taskbar
-		int i, posx;
-		posx = panel->area.bg->border.width + panel->area.paddingxlr;
+	resize_by_layout(obj, 0);
+	
+	//printf("resize_panel\n");
+	if (panel_mode != MULTI_DESKTOP && taskbar_enabled) {
+		// propagate width/height on hidden taskbar
+		int i, width, height;
+		Panel *panel = (Panel*)obj;
+		width = panel->taskbar[server.desktop].area.width;
+		height = panel->taskbar[server.desktop].area.height;
 		for (i=0 ; i < panel->nb_desktop ; i++) {
-			panel->taskbar[i].area.posx = posx;
-			panel->taskbar[i].area.width = taskbar_width;
+			panel->taskbar[i].area.width = width;
+			panel->taskbar[i].area.height = height;
 			panel->taskbar[i].area.resize = 1;
-			if (modulo_width) {
-				panel->taskbar[i].area.width++;
-				modulo_width--;
-			}
-			//printf("taskbar %d : posx %d, width, %d, posy %d\n", i, posx, panel->taskbar[i].area.width, posx + panel->taskbar[i].area.width);
-			if (panel_mode == MULTI_DESKTOP)
-				posx += panel->taskbar[i].area.width + panel->area.paddingx;
 		}
 	}
-	else {
-		int taskbar_height, modulo_height = 0;
-		int i, posy;
-
-		taskbar_height = panel->area.height - (2 * panel->area.paddingxlr) - (2 * panel->area.bg->border.width);
-		if (panel->clock.area.on_screen && panel->clock.area.height)
-			taskbar_height -= (panel->clock.area.height + panel->area.paddingx);
-	#ifdef ENABLE_BATTERY
-		if (panel->battery.area.on_screen && panel->battery.area.height)
-			taskbar_height -= (panel->battery.area.height + panel->area.paddingx);
-	#endif
-		// TODO : systray only on first panel. search better implementation !
-		if (systray.area.on_screen && systray.area.height && panel == &panel1[0])
-			taskbar_height -= (systray.area.height + panel->area.paddingx);
-
-		posy = panel->area.height - panel->area.bg->border.width - panel->area.paddingxlr - taskbar_height;
-		if (panel_mode == MULTI_DESKTOP) {
-			int height = taskbar_height - ((panel->nb_desktop-1) * panel->area.paddingx);
-			taskbar_height = height / panel->nb_desktop;
-			modulo_height = height % panel->nb_desktop;
-		}
-
-		// change posy and height for all taskbar
-		for (i=0 ; i < panel->nb_desktop ; i++) {
-			panel->taskbar[i].area.posy = posy;
-			panel->taskbar[i].area.height = taskbar_height;
-			panel->taskbar[i].area.resize = 1;
-			if (modulo_height) {
-				panel->taskbar[i].area.height++;
-				modulo_height--;
-			}
-			if (panel_mode == MULTI_DESKTOP)
-				posy += panel->taskbar[i].area.height + panel->area.paddingx;
-		}
-	}
+	return 0;
 }
 
-
-void visible_object()
-{
-	Panel *panel;
-	int i, j;
-
-	for (i=0 ; i < nb_panel ; i++) {
-		panel = &panel1[i];
-
-		Taskbar *taskbar;
-		for (j=0 ; j < panel->nb_desktop ; j++) {
-			taskbar = &panel->taskbar[j];
-			if (panel_mode != MULTI_DESKTOP && taskbar->desktop != server.desktop) {
-				// SINGLE_DESKTOP and not current desktop
-				taskbar->area.on_screen = 0;
-			}
-			else {
-				taskbar->area.on_screen = 1;
-			}
-		}
-	}
-	panel_refresh = 1;
-}
 
 void update_strut(Panel* p)
 {
@@ -449,6 +382,38 @@ void update_strut(Panel* p)
 }
 
 
+void set_panel_items_order(Panel *p)
+{
+	int k, j;
+	
+	if (p->area.list) {
+		g_slist_free(p->area.list);
+		p->area.list = 0;
+	}
+
+	for (k=0 ; k < strlen(panel_items_order) ; k++) {
+		if (panel_items_order[k] == 'L') 
+			p->area.list = g_slist_append(p->area.list, &p->launcher);
+		if (panel_items_order[k] == 'T') {
+			for (j=0 ; j < p->nb_desktop ; j++)
+				p->area.list = g_slist_append(p->area.list, &p->taskbar[j]);
+		}
+#ifdef ENABLE_BATTERY
+		if (panel_items_order[k] == 'B') 
+			p->area.list = g_slist_append(p->area.list, &p->battery);
+#endif
+		if (panel_items_order[k] == 'S' && p == panel1) {
+			// TODO : check systray is only on 1 panel
+			// at the moment only on panel1[0] allowed
+			p->area.list = g_slist_append(p->area.list, &systray);
+		}
+		if (panel_items_order[k] == 'C')
+			p->area.list = g_slist_append(p->area.list, &p->clock);
+	}
+	init_rendering(&p->area, 0);
+}
+
+
 void set_panel_properties(Panel *p)
 {
 	XStoreName (server.dsp, p->main_win, "tint2");
@@ -493,7 +458,7 @@ void set_panel_properties(Panel *p)
 	XChangeProperty(server.dsp, p->main_win, server.atom._MOTIF_WM_HINTS, server.atom._MOTIF_WM_HINTS, 32, PropModeReplace, (unsigned char *) prop, 5);
 
 	// XdndAware - Register for Xdnd events
-	int version=5;
+	Atom version=4;
 	XChangeProperty(server.dsp, p->main_win, server.atom.XdndAware, XA_ATOM, 32, PropModeReplace, (unsigned char*)&version, 1);
 
 	update_strut(p);
@@ -569,12 +534,23 @@ void set_panel_background(Panel *p)
 		a = l0->data;
 		set_redraw(a);
 	}
-	// reset task 'state_pix'
-	int i;
+	
+	// reset task/taskbar 'state_pix'
+	int i, k;
 	Taskbar *tskbar;
 	for (i=0 ; i < p->nb_desktop ; i++) {
 		tskbar = &p->taskbar[i];
-		for (l0 = tskbar->area.list; l0 ; l0 = l0->next) {
+		for (k=0; k<TASKBAR_STATE_COUNT; ++k) {
+			if (tskbar->state_pix[k]) XFreePixmap(server.dsp, tskbar->state_pix[k]);
+			tskbar->state_pix[k] = 0;
+			if (tskbar->bar_name.state_pix[k]) XFreePixmap(server.dsp, tskbar->bar_name.state_pix[k]);
+			tskbar->bar_name.state_pix[k] = 0;
+		}
+		tskbar->area.pix = 0;
+		tskbar->bar_name.area.pix = 0;
+		l0 = tskbar->area.list;
+		if (taskbarname_enabled) l0 = l0->next;
+		for (; l0 ; l0 = l0->next) {
 			set_task_redraw((Task *)l0->data);
 		}
 	}
@@ -624,7 +600,9 @@ Task *click_task (Panel *panel, int x, int y)
 	if ( (tskbar = click_taskbar(panel, x, y)) ) {
 		if (panel_horizontal) {
 			Task *tsk;
-			for (l0 = tskbar->area.list; l0 ; l0 = l0->next) {
+			l0 = tskbar->area.list;
+			if (taskbarname_enabled) l0 = l0->next;
+			for (; l0 ; l0 = l0->next) {
 				tsk = l0->data;
 				if (tsk->area.on_screen && x >= tsk->area.posx && x <= (tsk->area.posx + tsk->area.width)) {
 					return tsk;
@@ -633,11 +611,50 @@ Task *click_task (Panel *panel, int x, int y)
 		}
 		else {
 			Task *tsk;
-			for (l0 = tskbar->area.list; l0 ; l0 = l0->next) {
+			l0 = tskbar->area.list;
+			if (taskbarname_enabled) l0 = l0->next;
+			for (; l0 ; l0 = l0->next) {
 				tsk = l0->data;
 				if (tsk->area.on_screen && y >= tsk->area.posy && y <= (tsk->area.posy + tsk->area.height)) {
 					return tsk;
 				}
+			}
+		}
+	}
+	return NULL;
+}
+
+
+Launcher *click_launcher (Panel *panel, int x, int y)
+{
+	Launcher *launcher = &panel->launcher;
+	
+	if (panel_horizontal) {
+		if (launcher->area.on_screen && x >= launcher->area.posx && x <= (launcher->area.posx + launcher->area.width))
+			return launcher;
+	}
+	else {
+		if (launcher->area.on_screen && y >= launcher->area.posy && y <= (launcher->area.posy + launcher->area.height))
+			return launcher;
+	}
+	return NULL;
+}
+
+
+LauncherIcon *click_launcher_icon (Panel *panel, int x, int y)
+{
+	GSList *l0;
+	Launcher *launcher;
+
+	//printf("Click x=%d y=%d\n", x, y);
+	if ( (launcher = click_launcher(panel, x, y)) ) {
+		LauncherIcon *icon;
+		for (l0 = launcher->list_icons; l0 ; l0 = l0->next) {
+			icon = l0->data;
+			if (x >= (launcher->area.posx + icon->x) && x <= (launcher->area.posx + icon->x + icon->icon_size) &&
+				y >= (launcher->area.posy + icon->y) && y <= (launcher->area.posy + icon->y + icon->icon_size)) {
+				//printf("Hit rect x=%d y=%d xmax=%d ymax=%d\n", launcher->area.posx + icon->x, launcher->area.posy + icon->y, launcher->area.posx + icon->x + icon->width, launcher->area.posy + icon->y + icon->height);
+				return icon;
 			}
 		}
 	}
