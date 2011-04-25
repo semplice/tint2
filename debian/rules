@@ -3,7 +3,7 @@
 %:
 	dh $@
 
-# rename tintwizard.py to tintwizard
+# disable tintwizard call (because doesn't support yet new config)
 override_dh_auto_install:
 	dh_auto_install
-	mv debian/tint2/usr/bin/tintwizard.py debian/tint2/usr/bin/tintwizard
+	rm debian/tint2/usr/bin/tintwizard.py

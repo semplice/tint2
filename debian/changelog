@@ -2,6 +2,7 @@ tint2 (0.11+svn20110307-1) unstable; urgency=low
 
   * New upstream snapshot
   * Remove power_now support patch (applied upstream)
+  * Do not install tintwizard (it does not support config of SVN snapshot)
 
  -- Sebastian Reichel <sre@debian.org>  Mon, 25 Apr 2011 16:26:45 +0200
 
