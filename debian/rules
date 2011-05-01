@@ -2,3 +2,8 @@
 
 %:
 	dh $@
+
+override_dh_strip:
+	dh_strip --dbg-package=tint2-dbg
+override_dh_installdocs:
+	dh_installdocs --link-doc=tint2
