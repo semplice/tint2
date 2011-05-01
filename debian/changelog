@@ -5,7 +5,7 @@ tint2 (0.11+svn20110307-1) unstable; urgency=low
   * Do not install tintwizard (it does not support config of SVN snapshot)
   * Also build a tint2-dbg package
 
- -- Sebastian Reichel <sre@debian.org>  Mon, 25 Apr 2011 16:26:45 +0200
+ -- Sebastian Reichel <sre@debian.org>  Sun, 01 May 2011 19:35:32 +0200
 
 tint2 (0.11-2) unstable; urgency=low
 
