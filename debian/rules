@@ -2,8 +2,3 @@
 
 %:
 	dh $@
-
-# disable tintwizard call (because doesn't support yet new config)
-override_dh_auto_install:
-	dh_auto_install
-	rm debian/tint2/usr/bin/tintwizard.py
