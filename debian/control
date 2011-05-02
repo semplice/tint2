@@ -35,6 +35,7 @@ Description: lightweight taskbar
 
 Package: tint2-dbg
 Section: debug
+Priority: extra
 Architecture: any
 Depends: ${misc:Depends},
          tint2
