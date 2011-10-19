@@ -77,45 +77,6 @@ void cleanup_config()
 }
 
 
-void extract_values (const char *value, char **value1, char **value2, char **value3)
-{
-	char *b=0, *c=0;
-
-	if (*value1) free (*value1);
-	if (*value2) free (*value2);
-	if (*value3) free (*value3);
-
-	if ((b = strchr (value, ' '))) {
-		b[0] = '\0';
-		b++;
-	}
-	else {
-		*value2 = 0;
-		*value3 = 0;
-	}
-	*value1 = strdup (value);
-	g_strstrip(*value1);
-
-	if (b) {
-		if ((c = strchr (b, ' '))) {
-			c[0] = '\0';
-			c++;
-		}
-		else {
-			c = 0;
-			*value3 = 0;
-		}
-		*value2 = strdup (b);
-		g_strstrip(*value2);
-	}
-
-	if (c) {
-		*value3 = strdup (c);
-		g_strstrip(*value3);
-	}
-}
-
-
 void get_action (char *event, int *action)
 {
 	if (strcmp (event, "none") == 0)
@@ -626,6 +587,15 @@ void add_entry (char *key, char *value)
 		// if XSETTINGS manager running, tint2 use it.
 		if (!icon_theme_name)
 			icon_theme_name = strdup(value);
+	}
+	else if (strcmp(key, "launcher_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		launcher_alpha = atoi(value1);
+		launcher_saturation = atoi(value2);
+		launcher_brightness = atoi(value3);
+	}
+	else if (strcmp(key, "launcher_tooltip") == 0) {
+		launcher_tooltip_enabled = atoi(value);
 	}
 
 	/* Tooltip */

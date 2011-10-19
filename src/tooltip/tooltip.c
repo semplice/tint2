@@ -62,6 +62,8 @@ void init_tooltip()
 {
 	if (!g_tooltip.font_desc)
 		g_tooltip.font_desc = pango_font_description_from_string("sans 10");
+	if (g_tooltip.bg == 0)
+		g_tooltip.bg = &g_array_index(backgrounds, Background, 0);
 
 	XSetWindowAttributes attr;
 	attr.override_redirect = True;
@@ -99,7 +101,10 @@ void tooltip_show(void* arg)
 	int mx, my;
 	Window w;
 	XTranslateCoordinates( server.dsp, server.root_win, g_tooltip.panel->main_win, x, y, &mx, &my, &w);
-	Area* area = click_area(g_tooltip.panel, mx, my);
+	Area* area;
+	if (!panel_horizontal)
+		my += height/2; /* we adjusted y in tooltip_trigger_show, revert or we won't find the correct area anymore */
+	area = click_area(g_tooltip.panel, mx, my);
 	stop_tooltip_timeout();
 	if (!g_tooltip.mapped && area->_get_tooltip_text) {
 		tooltip_copy_text(area);

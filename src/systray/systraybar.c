@@ -377,6 +377,8 @@ gboolean add_icon(Window id)
 	parent_window = XCreateWindow(server.dsp, panel->main_win, 0, 0, 30, 30, 0, attr.depth, InputOutput, visual, mask, &set_attr);
 	old = XSetErrorHandler(window_error_handler);
 	XReparentWindow(server.dsp, id, parent_window, 0, 0);
+	// watch for the icon trying to resize itself / closing again!
+	XSelectInput(server.dsp, id, StructureNotifyMask);
 	XSync(server.dsp, False);
 	XSetErrorHandler(old);
 	if (error != FALSE) {
@@ -442,8 +444,6 @@ gboolean add_icon(Window id)
 		systray.list_icons = g_slist_insert_sorted(systray.list_icons, traywin, compare_traywindows);
 	//printf("add_icon id %lx, %d\n", id, g_slist_length(systray.list_icons));
 
-	// watch for the icon trying to resize itself!
-	XSelectInput(server.dsp, traywin->tray_id, StructureNotifyMask);
 	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		traywin->damage = XDamageCreate(server.dsp, traywin->id, XDamageReportRawRectangles);
 		XCompositeRedirectWindow(server.dsp, traywin->id, CompositeRedirectManual);
