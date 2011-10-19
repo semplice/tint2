@@ -38,7 +38,7 @@ Section: debug
 Priority: extra
 Architecture: any
 Depends: ${misc:Depends},
-         tint2
+         tint2 (= ${binary:Version})
 Description: lightweight taskbar (debug symbols)
  Tint is a simple panel/taskbar intentionally made for openbox3, but should
  also work with other window managers. The taskbar includes transparency and
