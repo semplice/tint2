@@ -20,11 +20,14 @@ typedef struct Launcher {
 } Launcher;
 
 typedef struct LauncherIcon {
+	// always start with area
+	Area area;
 	Imlib_Image icon_scaled;
 	Imlib_Image icon_original;
 	char *cmd;
 	char *icon_name;
 	char *icon_path;
+	char *icon_tooltip;
 	int icon_size;
 	int is_app_desktop;
 	int x, y;
@@ -57,6 +60,10 @@ typedef struct IconTheme {
 
 extern int launcher_enabled;
 extern int launcher_max_icon_size;
+extern int launcher_tooltip_enabled;
+extern int launcher_alpha;
+extern int launcher_saturation;
+extern int launcher_brightness;
 extern char *icon_theme_name; 	// theme name
 extern XSettingsClient *xsettings_client;
 

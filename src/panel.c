@@ -199,7 +199,7 @@ void init_panel()
 		p->main_win = XCreateWindow(server.dsp, server.root_win, p->posx, p->posy, p->area.width, p->area.height, 0, server.depth, InputOutput, server.visual, mask, &att);
 
 		long event_mask = ExposureMask|ButtonPressMask|ButtonReleaseMask|ButtonMotionMask;
-		if (p->g_task.tooltip_enabled || p->clock.area._get_tooltip_text)
+		if (p->g_task.tooltip_enabled || p->clock.area._get_tooltip_text || p->launcher.area.on_screen)
 			event_mask |= PointerMotionMask|LeaveWindowMask;
 		if (panel_autohide)
 			event_mask |= LeaveWindowMask|EnterWindowMask;
@@ -699,16 +699,10 @@ Area* click_area(Panel *panel, int x, int y)
 		GSList* it = result->list;
 		while (it) {
 			Area* a = it->data;
-			if (panel_horizontal) {
-				if (a->on_screen && x >= a->posx && x <= (a->posx + a->width)) {
-					new_result = a;
-					break;
-				}
-			} else {
-				if (a->on_screen && y >= a->posy && y <= (a->posy + a->height)) {
-					new_result = a;
-					break;
-				}
+			if (a->on_screen && x >= a->posx && x <= (a->posx + a->width)
+					&& y >= a->posy && y <= (a->posy + a->height)) {
+				new_result = a;
+				break;
 			}
 			it = it->next;
 		}
