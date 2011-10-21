@@ -1,3 +1,9 @@
+tint2 (0.11+svn20111011-2) unstable; urgency=low
+
+  * build debug symbols 
+
+ -- Sebastian Reichel <sre@debian.org>  Fri, 21 Oct 2011 16:30:50 +0200
+
 tint2 (0.11+svn20111011-1) unstable; urgency=low
 
   * New upstream snapshot
