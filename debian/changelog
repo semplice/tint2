@@ -1,6 +1,7 @@
 tint2 (0.11+svn20111022-2) unstable; urgency=low
 
   * Update debian/copyright to conform with Debian copyright format 1.0
+  * Update Debian Standards Version to 3.9.3
 
  -- Sebastian Reichel <sre@debian.org>  Wed, 07 Mar 2012 10:09:20 +0100
 
