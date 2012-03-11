@@ -11,4 +11,4 @@ override_dh_strip:
 
 override_dh_installdocs:
 	dh_installdocs --link-doc=tint2
-	cp -r debian/docs debian/tint2/usr/share/doc/html
+	cp -r debian/wiki debian/tint2/usr/share/doc/html
