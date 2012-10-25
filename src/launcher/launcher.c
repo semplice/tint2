@@ -24,6 +24,11 @@
 #include <unistd.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <glib/gi18n.h>
+
+#ifdef HAVE_SN
+#include <libsn/sn.h>
+#endif
 
 #include "window.h"
 #include "server.h"
@@ -104,6 +109,7 @@ void init_launcher_panel(void *p)
 void cleanup_launcher()
 {
 	int i;
+	GSList *l;
 
 	if (xsettings_client)
 		xsettings_client_destroy(xsettings_client);
@@ -112,7 +118,10 @@ void cleanup_launcher()
 		Launcher *launcher = &panel->launcher;		
 		cleanup_launcher_theme(launcher);
 	}
-	g_slist_free_full(panel_config.launcher.list_apps, free);
+	for (l = panel_config.launcher.list_apps; l ; l = l->next) {
+		free(l->data);
+	}
+	g_slist_free(panel_config.launcher.list_apps);
 	panel_config.launcher.list_apps = NULL;
 	free(icon_theme_name);
 	icon_theme_name = 0;
@@ -327,11 +336,54 @@ void free_icon(Imlib_Image icon)
 	}
 }
 
-void launcher_action(LauncherIcon *icon)
+void launcher_action(LauncherIcon *icon, XEvent* evt)
 {
 	char *cmd = malloc(strlen(icon->cmd) + 10);
 	sprintf(cmd, "(%s&)", icon->cmd);
-	tint_exec(cmd);
+#if HAVE_SN
+		SnLauncherContext* ctx;
+		Time time;
+
+		ctx = sn_launcher_context_new(server.sn_dsp, server.screen);
+		sn_launcher_context_set_name(ctx, icon->icon_tooltip);
+		sn_launcher_context_set_description(ctx, "Application launched from tint2");
+		sn_launcher_context_set_binary_name (ctx, icon->cmd);
+		// Get a timestamp from the X event
+		if (evt->type == ButtonPress || evt->type == ButtonRelease) {
+		    time = evt->xbutton.time;
+		}
+		else {
+		    	fprintf(stderr, "Unknown X event: %d\n", evt->type);
+			free(cmd);
+			return;
+		}
+		sn_launcher_context_initiate(ctx, "tint2", icon->cmd, time);
+#endif /* HAVE_SN */
+	pid_t pid;
+	pid = fork();
+	if (pid < 0) {
+		fprintf(stderr, "Could not fork\n");
+	}
+	else if (pid == 0) {
+#if HAVE_SN
+	        sn_launcher_context_setup_child_process (ctx);
+#endif // HAVE_SN
+		// Allow children to exist after parent destruction
+		setsid ();
+		// Run the command
+		execl("/bin/sh", "/bin/sh", "-c", icon->cmd, NULL);
+
+		fprintf(stderr, "Failed to execlp %s\n", icon->cmd);
+#if HAVE_SN
+		sn_launcher_context_unref (ctx);
+#endif // HAVE_SN
+		_exit(1);
+	}
+#if HAVE_SN
+	else {
+	        g_tree_insert (server.pids, GINT_TO_POINTER (pid), ctx);
+	}
+#endif // HAVE_SN
 	free(cmd);
 }
 
@@ -418,13 +470,13 @@ void expand_exec(DesktopEntry *entry, const char *path)
 	}
 }
 
-//TODO Use UTF8 when parsing the file
 int launcher_read_desktop_file(const char *path, DesktopEntry *entry)
 {
 	FILE *fp;
 	char *line = NULL;
 	size_t line_size;
 	char *key, *value;
+	int i;
 
 	entry->name = entry->icon = entry->exec = NULL;
 
@@ -432,6 +484,20 @@ int launcher_read_desktop_file(const char *path, DesktopEntry *entry)
 		fprintf(stderr, "Could not open file %s\n", path);
 		return 0;
 	}
+
+	gchar **languages = (gchar **)g_get_language_names();
+	// lang_index is the index of the language for the best Name key in the language vector
+	// lang_index_default is a constant that encodes the Name key without a language
+	int lang_index, lang_index_default;
+#define LANG_DBG 0
+	if (LANG_DBG) printf("Languages:");
+	for (i = 0; languages[i]; i++) {
+		if (LANG_DBG) printf(" %s", languages[i]);
+	}
+	if (LANG_DBG) printf("\n");
+	lang_index_default = i;
+	// we currently do not know about any Name key at all, so use an invalid index
+	lang_index = lang_index_default + 1;
 
 	int inside_desktop_entry = 0;
 	while (getline(&line, &line_size, fp) >= 0) {
@@ -443,8 +509,22 @@ int launcher_read_desktop_file(const char *path, DesktopEntry *entry)
 			inside_desktop_entry = (strcmp(line, "[Desktop Entry]") == 0);
 		}
 		if (inside_desktop_entry && parse_dektop_line(line, &key, &value)) {
-			if (!entry->name && strcmp(key, "Name") == 0) {
-				entry->name = strdup(value);
+			if (strstr(key, "Name") == key) {
+				if (strcmp(key, "Name") == 0 && lang_index > lang_index_default) {
+					entry->name = strdup(value);
+					lang_index = lang_index_default;
+				} else {
+					for (i = 0; languages[i] && i < lang_index; i++) {
+						gchar *localized_key = g_strdup_printf("Name[%s]", languages[i]);
+						if (strcmp(key, localized_key) == 0) {
+							if (entry->name)
+								free(entry->name);
+							entry->name = strdup(value);
+							lang_index = i;
+						}
+						g_free(localized_key);
+					}
+				}
 			} else if (!entry->exec && strcmp(key, "Exec") == 0) {
 				entry->exec = strdup(value);
 			} else if (!entry->icon && strcmp(key, "Icon") == 0) {
@@ -819,6 +899,7 @@ int directory_size_distance(IconThemeDir *dir, int size)
 	}
 }
 
+#define DEBUG_ICON_SEARCH 0
 // Returns the full path to an icon file (or NULL) given the icon name
 char *icon_path(Launcher *launcher, const char *icon_name, int size)
 {
@@ -836,6 +917,10 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 	GSList *basenames = NULL;
 	char *home_icons = g_build_filename(g_get_home_dir(), ".icons", NULL);
 	basenames = g_slist_append(basenames, home_icons);
+	char *home_local_icons = g_build_filename(g_get_home_dir(), ".local/share/icons", NULL);
+	basenames = g_slist_append(basenames, home_local_icons);
+	basenames = g_slist_append(basenames, "/usr/local/share/icons");
+	basenames = g_slist_append(basenames, "/usr/local/share/pixmaps");
 	basenames = g_slist_append(basenames, "/usr/share/icons");
 	basenames = g_slist_append(basenames, "/usr/share/pixmaps");
 
@@ -880,6 +965,7 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 							g_slist_free(basenames);
 							g_slist_free(extensions);
 							g_free(home_icons);
+							g_free(home_local_icons);
 							return file_name;
 						} else {
 							free(file_name);
@@ -923,8 +1009,11 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 					strlen(dir_name) + strlen(icon_name) + strlen(extension) + 100);
 					// filename = directory/$(themename)/subdirectory/iconname.extension
 					sprintf(file_name, "%s/%s/%s/%s%s", base_name, theme_name, dir_name, icon_name, extension);
+					if (DEBUG_ICON_SEARCH)
+						printf("checking %s\n", file_name);
 					if (g_file_test(file_name, G_FILE_TEST_EXISTS)) {
-						//printf("found: %s\n", file_name);
+						if (DEBUG_ICON_SEARCH)
+							printf("found: %s\n", file_name);
 						// Closest match
 						if (directory_size_distance((IconThemeDir*)dir->data, size) < minimal_size && (!best_file_theme ? 1 : theme == best_file_theme)) {
 							if (best_file_name) {
@@ -934,7 +1023,8 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 							best_file_name = strdup(file_name);
 							minimal_size = directory_size_distance((IconThemeDir*)dir->data, size);
 							best_file_theme = theme;
-							//printf("best_file_name = %s; minimal_size = %d\n", best_file_name, minimal_size);
+							if (DEBUG_ICON_SEARCH)
+								printf("best_file_name = %s; minimal_size = %d\n", best_file_name, minimal_size);
 						}
 						// Next larger match
 						if (((IconThemeDir*)dir->data)->size >= size &&
@@ -947,7 +1037,8 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 							next_larger = strdup(file_name);
 							next_larger_size = ((IconThemeDir*)dir->data)->size;
 							next_larger_theme = theme;
-							//printf("next_larger = %s; next_larger_size = %d\n", next_larger, next_larger_size);
+							if (DEBUG_ICON_SEARCH)
+								printf("next_larger = %s; next_larger_size = %d\n", next_larger, next_larger_size);
 						}
 					}
 					free(file_name);
@@ -960,12 +1051,14 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 		g_slist_free(extensions);
 		free(best_file_name);
 		g_free(home_icons);
+		g_free(home_local_icons);
 		return next_larger;
 	}
 	if (best_file_name) {
 		g_slist_free(basenames);
 		g_slist_free(extensions);
 		g_free(home_icons);
+		g_free(home_local_icons);
 		return best_file_name;
 	}
 
@@ -981,11 +1074,13 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 					strlen(extension) + 100);
 				// filename = directory/iconname.extension
 				sprintf(file_name, "%s/%s%s", base_name, icon_name, extension);
-				//printf("checking %s\n", file_name);
+				if (DEBUG_ICON_SEARCH)
+					printf("checking %s\n", file_name);
 				if (g_file_test(file_name, G_FILE_TEST_EXISTS)) {
 					g_slist_free(basenames);
 					g_slist_free(extensions);
 					g_free(home_icons);
+					g_free(home_local_icons);
 					return file_name;
 				} else {
 					free(file_name);
@@ -1000,6 +1095,7 @@ char *icon_path(Launcher *launcher, const char *icon_name, int size)
 	g_slist_free(basenames);
 	g_slist_free(extensions);
 	g_free(home_icons);
+	g_free(home_local_icons);
 	return NULL;
 }
 
