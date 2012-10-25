@@ -1,6 +1,6 @@
 tint2 (0.11+svn20121014-1) UNRELEASED; urgency=low
 
-  * New upstream checkout
+  * New upstream checkout (Closes: #678918)
    - Fix for no task cycling if all windows are minimized
    - Fix for incorrect task cycling when windows visible on
      all desktops are present
@@ -10,6 +10,7 @@ tint2 (0.11+svn20121014-1) UNRELEASED; urgency=low
    - Launcher: add icon lookup in ~/.local and /usr/local
    - Disable mouse hover events when the launcher tooltip
      is disabled
+  * Do not install tint2conf (Closes: #672840)
   * Add libstartup-notification dependency
   * Bump Debian Standards Version to 3.9.4
   * Bump compat level to 9
