@@ -11,6 +11,7 @@ tint2 (0.11+svn20121014-1) UNRELEASED; urgency=low
    - Disable mouse hover events when the launcher tooltip
      is disabled
   * Add libstartup-notification dependency
+  * Bump Debian Standards Version to 3.9.4
   * Bump compat level to 9
 
  -- Sebastian Reichel <sre@debian.org>  Thu, 25 Oct 2012 13:35:15 +0200
