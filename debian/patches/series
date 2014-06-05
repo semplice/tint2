@@ -1,3 +1,4 @@
 00-inform-about-unsupported-saving.patch
 01-fix-parameter-check.patch
 02-fix-tooltip_trigger_hide.patch
+03-launcher_apps_dir.patch
