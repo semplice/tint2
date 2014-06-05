@@ -3,3 +3,5 @@
 02-fix-tooltip_trigger_hide.patch
 03-launcher_apps_dir.patch
 04-freespace.patch
+05-task-align.patch
+06-sample-task-align.patch

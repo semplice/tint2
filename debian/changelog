@@ -7,8 +7,10 @@ tint2 (0.11+svn20121014-3) UNRELEASED; urgency=low
      the directory for their *.desktop files.
    - 04-freespace.patch
      Add support for a separator panel element.
+   - 05-task-align.patch, 06-sample-task-align.patch
+     Add support for task alignment.
 
- -- Sebastian Reichel <sre@debian.org>  Thu, 05 Jun 2014 17:22:52 +0200
+ -- Sebastian Reichel <sre@debian.org>  Thu, 05 Jun 2014 17:30:23 +0200
 
 tint2 (0.11+svn20121014-2) unstable; urgency=low
 
