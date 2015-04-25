@@ -29,6 +29,7 @@
 extern int signal_pending;
 // --------------------------------------------------
 // mouse events
+extern int mouse_left;
 extern int mouse_middle;
 extern int mouse_right;
 extern int mouse_scroll_up;
@@ -43,6 +44,7 @@ extern int panel_mode;
 extern int wm_menu;
 extern int panel_dock;
 extern int panel_layer;
+extern char *panel_window_name;
 
 //panel position
 enum { LEFT=0x01, RIGHT=0x02, CENTER=0X04, TOP=0X08, BOTTOM=0x10 };
@@ -66,6 +68,8 @@ extern int  max_tick_urgent;
 extern GArray* backgrounds;
 
 extern Imlib_Image default_icon;
+// TODO maybe this should be a config option
+#define DEFAULT_FONT "sans 10"
 
 
 // tint2 use one panel per monitor and one taskbar per desktop.
@@ -85,6 +89,7 @@ typedef struct {
 	int pourcentx, pourcenty;
 	// location of the panel (monitor number)
 	int monitor;
+	int font_shadow;
 
 	// --------------------------------------------------
 	// task and taskbar parameter per panel

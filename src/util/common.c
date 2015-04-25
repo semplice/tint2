@@ -25,8 +25,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <unistd.h>
-
+#include <glib.h>
 #include "common.h"
 #include "../server.h"
 
@@ -35,7 +36,7 @@
 void copy_file(const char *pathSrc, const char *pathDest)
 {
 	FILE *fileSrc, *fileDest;
-	char line[100];
+	char buffer[100];
 	int  nb;
 
 	fileSrc = fopen(pathSrc, "rb");
@@ -44,9 +45,11 @@ void copy_file(const char *pathSrc, const char *pathDest)
 	fileDest = fopen(pathDest, "wb");
 	if (fileDest == NULL) return;
 
-	while ((nb = fread(line, 1, 100, fileSrc)) > 0)
-		if ( nb != fwrite(line, 1, nb, fileDest))
+	while ((nb = fread(buffer, 1, sizeof(buffer), fileSrc)) > 0) {
+		if ( nb != fwrite(buffer, 1, nb, fileDest)) {
 			printf("Error while copying file %s to %s\n", pathSrc, pathDest);
+		}
+	}
 
 	fclose (fileDest);
 	fclose (fileSrc);
@@ -93,6 +96,43 @@ void tint_exec(const char *command)
 	}
 }
 
+char *expand_tilde(char *s)
+{
+	const gchar *home = g_get_home_dir();
+	if (home &&
+		(strcmp(s, "~") == 0 ||
+		strstr(s, "~/") == s)) {
+		char *result = calloc(strlen(home) + strlen(s), 1);
+		strcat(result, home);
+		strcat(result, s + 1);
+		return result;
+	} else {
+		return strdup(s);
+	}
+}
+
+char *contract_tilde(char *s)
+{
+	const gchar *home = g_get_home_dir();
+	if (!home)
+		return strdup(s);
+
+	char *home_slash = calloc(strlen(home) + 1, 1);
+	strcat(home_slash, home);
+	strcat(home_slash, "/");
+
+	if ((strcmp(s, home) == 0 ||
+		strstr(s, home_slash) == s)) {
+		char *result = calloc(strlen(s) - strlen(home) + 1, 1);
+		strcat(result, "~");
+		strcat(result, s + strlen(home));
+		free(home_slash);
+		return result;
+	} else {
+		free(home_slash);
+		return strdup(s);
+	}
+}
 
 int hex_char_to_int (char c)
 {
@@ -138,6 +178,7 @@ int hex_to_rgb (char *hex, int *r, int *g, int *b)
 void get_color (char *hex, double *rgb)
 {
 	int r, g, b;
+	r = g = b = 0;
 	hex_to_rgb (hex, &r, &g, &b);
 
 	rgb[0] = (r / 255.0);
@@ -294,7 +335,6 @@ void adjust_asb(DATA32 *data, int w, int h, int alpha, float satur, float bright
 	}
 }
 
-
 void createHeuristicMask(DATA32* data, int w, int h)
 {
 	// first we need to find the mask color, therefore we check all 4 edge pixel and take the color which
@@ -341,4 +381,25 @@ void render_image(Drawable d, int x, int y, int w, int h)
 	XFreePixmap(server.dsp, pmap_tmp);
 	XRenderFreePicture(server.dsp, pict_image);
 	XRenderFreePicture(server.dsp, pict_drawable);
+}
+
+void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, int font_shadow)
+{
+	if (font_shadow) {
+		const int shadow_size = 3;
+		const double shadow_edge_alpha = 0.0;
+		int i, j;
+		for (i = -shadow_size; i <= shadow_size; i++) {
+			for (j = -shadow_size; j <= shadow_size; j++) {
+				cairo_set_source_rgba(c, 0.0, 0.0, 0.0, 1.0 - (1.0 - shadow_edge_alpha) * sqrt((i*i + j*j)/(double)(shadow_size*shadow_size)));
+				pango_cairo_update_layout(c, layout);
+				cairo_move_to(c, posx + i, posy + j);
+				pango_cairo_show_layout(c, layout);
+			}
+		}
+	}
+	cairo_set_source_rgba (c, color->color[0], color->color[1], color->color[2], color->alpha);
+	pango_cairo_update_layout (c, layout);
+	cairo_move_to (c, posx, posy);
+	pango_cairo_show_layout (c, layout);
 }

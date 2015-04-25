@@ -35,6 +35,10 @@
 #include <pango/pangoxft.h>
 #include <Imlib2.h>
 
+#include "config.h"
+
+#ifndef TINT2CONF
+
 #include "common.h"
 #include "server.h"
 #include "panel.h"
@@ -44,7 +48,6 @@
 #include "systraybar.h"
 #include "launcher.h"
 #include "clock.h"
-#include "config.h"
 #include "window.h"
 #include "tooltip.h"
 #include "timer.h"
@@ -53,9 +56,13 @@
 #include "battery.h"
 #endif
 
+#endif
+
 // global path
 char *config_path;
 char *snapshot_path;
+
+#ifndef TINT2CONF
 
 // --------------------------------------------------
 // backward compatibility
@@ -65,15 +72,17 @@ static int new_config_file;
 
 void default_config()
 {
-	config_path = 0;
-	snapshot_path = 0;
+	config_path = NULL;
+	snapshot_path = NULL;
 	new_config_file = 0;
 }
 
 void cleanup_config()
 {
-	if (config_path) g_free(config_path);
-	if (snapshot_path) g_free(snapshot_path);
+	free(config_path);
+	config_path = NULL;
+	free(snapshot_path);
+	snapshot_path = NULL;
 }
 
 
@@ -101,6 +110,8 @@ void get_action (char *event, int *action)
 		*action = NEXT_TASK;
 	else if (strcmp (event, "prev_task") == 0)
 		*action = PREV_TASK;
+	else
+		fprintf(stderr, "Error: unrecognized action '%s'. Please fix your config file.\n", event);
 }
 
 
@@ -112,7 +123,7 @@ int get_task_status(char* status)
 		return TASK_ICONIFIED;
 	if (strcmp(status, "urgent") == 0)
 		return TASK_URGENT;
-	return TASK_NORMAL;
+	return -1;
 }
 
 
@@ -142,6 +153,25 @@ int config_get_monitor(char* monitor)
 	return -1;
 }
 
+void load_launcher_app_dir(const char *path)
+{
+	GDir *d = g_dir_open(path, 0, NULL);
+	if (d) {
+		const gchar *name;
+		while ((name = g_dir_read_name(d))) {
+			gchar *file = g_build_filename(path, name, NULL);
+			if (!g_file_test(file, G_FILE_TEST_IS_DIR) &&
+				g_str_has_suffix(file, ".desktop")) {
+				panel_config.launcher.list_apps = g_slist_append(panel_config.launcher.list_apps, strdup(file));
+			} else if (g_file_test(file, G_FILE_TEST_IS_DIR)) {
+				load_launcher_app_dir(file);
+			}
+			g_free(file);
+		}
+		g_dir_close(d);
+	}
+}
+
 void add_entry (char *key, char *value)
 {
 	char *value1=0, *value2=0, *value3=0;
@@ -150,6 +180,7 @@ void add_entry (char *key, char *value)
 	if (strcmp (key, "rounded") == 0) {
 		// 'rounded' is the first parameter => alloc a new background
 		Background bg;
+		memset(&bg, 0, sizeof(bg));
 		bg.border.rounded = atoi(value);
 		g_array_append_val(backgrounds, bg);
 	}
@@ -256,7 +287,7 @@ void add_entry (char *key, char *value)
 		}
 	}
 	else if (strcmp (key, "font_shadow") == 0)
-		panel_config.g_task.font_shadow = atoi (value);
+		panel_config.font_shadow = atoi (value);
 	else if (strcmp (key, "panel_background_id") == 0) {
 		int id = atoi (value);
 		id = (id < backgrounds->len && id >= 0) ? id : 0;
@@ -275,6 +306,15 @@ void add_entry (char *key, char *value)
 			panel_layer = TOP_LAYER;
 		else
 			panel_layer = NORMAL_LAYER;
+	}
+	else if (strcmp (key, "disable_transparency") == 0) {
+		server.disable_transparency = atoi (value);
+	}
+	else if (strcmp (key, "panel_window_name") == 0) {
+		if (strlen(value) > 0) {
+			free(panel_window_name);
+			panel_window_name = strdup (value);
+		}
 	}
 
 	/* Battery */
@@ -337,12 +377,13 @@ void add_entry (char *key, char *value)
 		if (new_config_file == 0) {
 			clock_enabled = 1;
 			if (panel_items_order) {
-				char* tmp = g_strconcat(panel_items_order, "C", NULL);
-				g_free( panel_items_order );
-				panel_items_order = tmp;
+				gchar* tmp = g_strconcat(panel_items_order, "C", NULL);
+				free(panel_items_order);
+				panel_items_order = strdup(tmp);
+				g_free(tmp);
 			}
 			else 
-				panel_items_order = g_strdup("C");
+				panel_items_order = strdup("C");
 		}
 		if (strlen(value) > 0) {
 			time1_format = strdup (value);
@@ -406,6 +447,9 @@ void add_entry (char *key, char *value)
 		if (strcmp (value, "multi_desktop") == 0) panel_mode = MULTI_DESKTOP;
 		else panel_mode = SINGLE_DESKTOP;
 	}
+	else if (strcmp (key, "taskbar_distribute_size") == 0) {
+		taskbar_distribute_size = atoi(value);
+	}
 	else if (strcmp (key, "taskbar_padding") == 0) {
 		extract_values(value, &value1, &value2, &value3);
 		panel_config.g_taskbar.area.paddingxlr = panel_config.g_taskbar.area.paddingx = atoi (value1);
@@ -458,6 +502,21 @@ void add_entry (char *key, char *value)
 		if (value2) taskbarname_active_font.alpha = (atoi (value2) / 100.0);
 		else taskbarname_active_font.alpha = 0.5;
 	}
+	else if (strcmp (key, "taskbar_hide_inactive_tasks") == 0) {
+		hide_inactive_tasks = atoi (value);
+	}
+	else if (strcmp (key, "taskbar_hide_different_monitor") == 0) {
+		hide_task_diff_monitor = atoi (value);
+	}
+	else if (strcmp (key, "taskbar_sort_order") == 0) {
+		if (strcmp(value, "center") == 0) {
+			taskbar_sort_method = TASKBAR_SORT_CENTER;
+		} else if (strcmp(value, "title") == 0) {
+			taskbar_sort_method = TASKBAR_SORT_TITLE;
+		} else {
+			taskbar_sort_method = TASKBAR_NOSORT;
+		}
+	}
 
 	/* Task */
 	else if (strcmp (key, "task_text") == 0)
@@ -489,34 +548,40 @@ void add_entry (char *key, char *value)
 	}
 	else if (g_regex_match_simple("task.*_font_color", key, 0, 0)) {
 		gchar** split = g_regex_split_simple("_", key, 0, 0);
-		int status = get_task_status(split[1]);
+		int status = g_strv_length(split) == 3 ? TASK_NORMAL : get_task_status(split[1]);
 		g_strfreev(split);
-		extract_values(value, &value1, &value2, &value3);
-		float alpha = 1;
-		if (value2) alpha = (atoi (value2) / 100.0);
-		get_color (value1, panel_config.g_task.font[status].color);
-		panel_config.g_task.font[status].alpha = alpha;
-		panel_config.g_task.config_font_mask |= (1<<status);
+		if (status >= 0) {
+			extract_values(value, &value1, &value2, &value3);
+			float alpha = 1;
+			if (value2) alpha = (atoi (value2) / 100.0);
+			get_color (value1, panel_config.g_task.font[status].color);
+			panel_config.g_task.font[status].alpha = alpha;
+			panel_config.g_task.config_font_mask |= (1<<status);
+		}
 	}
 	else if (g_regex_match_simple("task.*_icon_asb", key, 0, 0)) {
 		gchar** split = g_regex_split_simple("_", key, 0, 0);
-		int status = get_task_status(split[1]);
+		int status = g_strv_length(split) == 3 ? TASK_NORMAL : get_task_status(split[1]);
 		g_strfreev(split);
-		extract_values(value, &value1, &value2, &value3);
-		panel_config.g_task.alpha[status] = atoi(value1);
-		panel_config.g_task.saturation[status] = atoi(value2);
-		panel_config.g_task.brightness[status] = atoi(value3);
-		panel_config.g_task.config_asb_mask |= (1<<status);
+		if (status >= 0) {
+			extract_values(value, &value1, &value2, &value3);
+			panel_config.g_task.alpha[status] = atoi(value1);
+			panel_config.g_task.saturation[status] = atoi(value2);
+			panel_config.g_task.brightness[status] = atoi(value3);
+			panel_config.g_task.config_asb_mask |= (1<<status);
+		}
 	}
 	else if (g_regex_match_simple("task.*_background_id", key, 0, 0)) {
 		gchar** split = g_regex_split_simple("_", key, 0, 0);
-		int status = get_task_status(split[1]);
+		int status = g_strv_length(split) == 3 ? TASK_NORMAL : get_task_status(split[1]);
 		g_strfreev(split);
-		int id = atoi (value);
-		id = (id < backgrounds->len && id >= 0) ? id : 0;
-		panel_config.g_task.background[status] = &g_array_index(backgrounds, Background, id);
-		panel_config.g_task.config_background_mask |= (1<<status);
-		if (status == TASK_NORMAL) panel_config.g_task.area.bg = panel_config.g_task.background[TASK_NORMAL];
+		if (status >= 0) {
+			int id = atoi (value);
+			id = (id < backgrounds->len && id >= 0) ? id : 0;
+			panel_config.g_task.background[status] = &g_array_index(backgrounds, Background, id);
+			panel_config.g_task.config_background_mask |= (1<<status);
+			if (status == TASK_NORMAL) panel_config.g_task.area.bg = panel_config.g_task.background[TASK_NORMAL];
+		}
 	}
 	// "tooltip" is deprecated but here for backwards compatibility
 	else if (strcmp (key, "task_tooltip") == 0 || strcmp(key, "tooltip") == 0)
@@ -527,12 +592,13 @@ void add_entry (char *key, char *value)
 		if (new_config_file == 0 && systray_enabled == 0) {
 			systray_enabled = 1;
 			if (panel_items_order) {
-				char* tmp = g_strconcat(panel_items_order, "S", NULL);
-				g_free( panel_items_order );
-				panel_items_order = tmp;
+				gchar* tmp = g_strconcat(panel_items_order, "S", NULL);
+				free(panel_items_order);
+				panel_items_order = strdup(tmp);
+				g_free(tmp);
 			}
 			else
-				panel_items_order = g_strdup("S");
+				panel_items_order = strdup("S");
 		}
 		extract_values(value, &value1, &value2, &value3);
 		systray.area.paddingxlr = systray.area.paddingx = atoi (value1);
@@ -563,6 +629,9 @@ void add_entry (char *key, char *value)
 		systray.saturation = atoi(value2);
 		systray.brightness = atoi(value3);
 	}
+	else if (strcmp(key, "systray_monitor") == 0) {
+		systray_monitor = atoi(value) - 1;
+	}
 
 	/* Launcher */
 	else if (strcmp (key, "launcher_padding") == 0) {
@@ -580,13 +649,19 @@ void add_entry (char *key, char *value)
 		launcher_max_icon_size = atoi(value);
 	}
 	else if (strcmp(key, "launcher_item_app") == 0) {
-		char *app = strdup(value);
+		char *app = expand_tilde(value);
 		panel_config.launcher.list_apps = g_slist_append(panel_config.launcher.list_apps, app);
+	}
+	else if (strcmp(key, "launcher_apps_dir") == 0) {
+		char *path = expand_tilde(value);
+		load_launcher_app_dir(path);
+		free(path);
 	}
 	else if (strcmp(key, "launcher_icon_theme") == 0) {
 		// if XSETTINGS manager running, tint2 use it.
-		if (!icon_theme_name)
-			icon_theme_name = strdup(value);
+		if (icon_theme_name_config)
+			free(icon_theme_name_config);
+		icon_theme_name_config = strdup(value);
 	}
 	else if (strcmp(key, "launcher_icon_asb") == 0) {
 		extract_values(value, &value1, &value2, &value3);
@@ -596,6 +671,9 @@ void add_entry (char *key, char *value)
 	}
 	else if (strcmp(key, "launcher_tooltip") == 0) {
 		launcher_tooltip_enabled = atoi(value);
+	}
+	else if (strcmp(key, "startup_notifications") == 0) {
+		startup_notifications = atoi(value);
 	}
 
 	/* Tooltip */
@@ -628,6 +706,8 @@ void add_entry (char *key, char *value)
 	}
 
 	/* Mouse actions */
+	else if (strcmp (key, "mouse_left") == 0)
+		get_action (value, &mouse_left);
 	else if (strcmp (key, "mouse_middle") == 0)
 		get_action (value, &mouse_middle);
 	else if (strcmp (key, "mouse_right") == 0)
@@ -666,29 +746,33 @@ void add_entry (char *key, char *value)
 			systray_enabled = atoi(value);
 			if (systray_enabled) {
 				if (panel_items_order) {
-					char* tmp = g_strconcat(panel_items_order, "S", NULL);
-					g_free( panel_items_order );
-					panel_items_order = tmp;
+					gchar* tmp = g_strconcat(panel_items_order, "S", NULL);
+					free(panel_items_order);
+					panel_items_order = strdup(tmp);
+					g_free(tmp);
 				}
 				else
-					panel_items_order = g_strdup("S");
+					panel_items_order = strdup("S");
 			}
 		}
 	}
+#ifdef ENABLE_BATTERY
 	else if (strcmp(key, "battery") == 0) {
 		if (new_config_file == 0) {
 			battery_enabled = atoi(value);
 			if (battery_enabled) {
 				if (panel_items_order) {
-					char* tmp = g_strconcat(panel_items_order, "B", NULL);
-					g_free( panel_items_order );
-					panel_items_order = tmp;
+					gchar* tmp = g_strconcat(panel_items_order, "B", NULL);
+					free(panel_items_order);
+					panel_items_order = strdup(tmp);
+					g_free(tmp);
 				}
 				else
-					panel_items_order = g_strdup("B");
+					panel_items_order = strdup("B");
 			}
 		}
 	}
+#endif
 	else
 		fprintf(stderr, "tint2 : invalid option \"%s\",\n  upgrade tint2 or correct your config file\n", key);
 
@@ -701,7 +785,7 @@ void add_entry (char *key, char *value)
 int config_read ()
 {
 	const gchar * const * system_dirs;
-	char *path1;
+	gchar *path1;
 	gint i;
 
 	// follow XDG specification
@@ -716,19 +800,19 @@ int config_read ()
 	g_free(path1);
 
 	// copy tint2rc from system directory to user directory
-	char *path2 = 0;
+	gchar *path2 = 0;
 	system_dirs = g_get_system_config_dirs();
 	for (i = 0; system_dirs[i]; i++) {
 		path2 = g_build_filename(system_dirs[i], "tint2", "tint2rc", NULL);
 
 		if (g_file_test(path2, G_FILE_TEST_EXISTS)) break;
-		g_free (path2);
+		g_free(path2);
 		path2 = 0;
 	}
 
 	if (path2) {
 		// copy file in user directory (path1)
-		char *dir = g_build_filename (g_get_user_config_dir(), "tint2", NULL);
+		gchar *dir = g_build_filename (g_get_user_config_dir(), "tint2", NULL);
 		if (!g_file_test (dir, G_FILE_TEST_IS_DIR)) g_mkdir(dir, 0777);
 		g_free(dir);
 
@@ -766,16 +850,17 @@ int config_read_file (const char *path)
 	if (new_config_file == 0) {
 		taskbar_enabled = 1;
 		if (panel_items_order) {
-			char* tmp = g_strconcat( "T", panel_items_order, NULL );
-			g_free(panel_items_order);
-			panel_items_order = tmp;
+			gchar* tmp = g_strconcat("T", panel_items_order, NULL);
+			free(panel_items_order);
+			panel_items_order = strdup(tmp);
+			g_free(tmp);
 		}
 		else 
-			panel_items_order = g_strdup("T");
+			panel_items_order = strdup("T");
 	}
 
 	return 1;
 }
 
-
+#endif
 

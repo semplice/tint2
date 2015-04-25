@@ -62,6 +62,7 @@ Task *add_task (Window win)
 	new_tsk.desktop = window_get_desktop (win);
 	new_tsk.area.panel = &panel1[monitor];
 	new_tsk.current_state = window_is_iconified(win) ? TASK_ICONIFIED : TASK_NORMAL;
+	window_get_coordinates(win, &new_tsk.win_x, &new_tsk.win_y, &new_tsk.win_w, &new_tsk.win_h);
 
 	// allocate only one title and one icon
 	// even with task_on_all_desktop and with task_on_all_panel
@@ -85,11 +86,15 @@ Task *add_task (Window win)
 		if (new_tsk.desktop != ALLDESKTOP && new_tsk.desktop != j) continue;
 
 		tskbar = &panel1[monitor].taskbar[j];
-		new_tsk2 = malloc(sizeof(Task));
+		new_tsk2 = calloc(1, sizeof(Task));
 		memcpy(&new_tsk2->area, &panel1[monitor].g_task.area, sizeof(Area));
 		new_tsk2->area.parent = tskbar;
 		new_tsk2->win = new_tsk.win;
 		new_tsk2->desktop = new_tsk.desktop;
+		new_tsk2->win_x = new_tsk.win_x;
+		new_tsk2->win_y = new_tsk.win_y;
+		new_tsk2->win_w = new_tsk.win_w;
+		new_tsk2->win_h = new_tsk.win_h;
 		new_tsk2->current_state = -1;  // to update the current state later in set_task_state...
 		if (new_tsk2->desktop == ALLDESKTOP && server.desktop != j) {
 			// hide ALLDESKTOP task on non-current desktop
@@ -109,13 +114,21 @@ Task *add_task (Window win)
 		g_ptr_array_add(task_group, new_tsk2);
 		//printf("add_task panel %d, desktop %d, task %s\n", i, j, new_tsk2->title);
 	}
-	Window* key = malloc(sizeof(Window));
+	Window* key = calloc(1, sizeof(Window));
 	*key = new_tsk.win;
 	g_hash_table_insert(win_to_task_table, key, task_group);
 	set_task_state(new_tsk2, new_tsk.current_state);
 
-	if (window_is_urgent(win))
+	sort_taskbar_for_win(win);
+
+	if (panel_mode == MULTI_DESKTOP) {
+		Panel *panel = new_tsk2->area.panel;
+		panel->area.resize = 1;
+	}
+
+	if (window_is_urgent(win)) {
 		add_urgent(new_tsk2);
+	}
 
 	return new_tsk2;
 }
@@ -124,6 +137,11 @@ Task *add_task (Window win)
 void remove_task (Task *tsk)
 {
 	if (!tsk) return;
+
+	if (panel_mode == MULTI_DESKTOP) {
+		Panel *panel = tsk->area.panel;
+		panel->area.resize = 1;
+	}
 
 	Window win = tsk->win;
 
@@ -165,7 +183,10 @@ int get_title(Task *tsk)
 	Panel *panel = tsk->area.panel;
 	char *title, *name;
 
-	if (!panel->g_task.text && !panel->g_task.tooltip_enabled) return 0;
+	if (!panel->g_task.text &&
+		!panel->g_task.tooltip_enabled &&
+		taskbar_sort_method != TASKBAR_SORT_TITLE)
+		return 0;
 
 	name = server_get_property (tsk->win, server.atom._NET_WM_VISIBLE_NAME, server.atom.UTF8_STRING, 0);
 	if (!name || !strlen(name)) {
@@ -173,14 +194,14 @@ int get_title(Task *tsk)
 		if (!name || !strlen(name)) {
 			name = server_get_property (tsk->win, server.atom.WM_NAME, XA_STRING, 0);
 			if (!name || !strlen(name)) {
-				name = malloc(10);
+				name = calloc(10, 1);
 				strcpy(name, "Untitled");
 			}
 		}
 	}
 
 	// add space before title
-	title = malloc(strlen(name)+2);
+	title = calloc(strlen(name)+2, 1);
 	if (panel->g_task.icon) strcpy(title, " ");
 	else title[0] = 0;
 	strcat(title, name);
@@ -313,7 +334,7 @@ void get_icon (Task *tsk)
 	}
 }
 
-
+// TODO icons look too large when the panel is large
 void draw_task_icon (Task *tsk, int text_width)
 {
 	if (tsk->icon[tsk->current_state] == 0) return;
@@ -331,13 +352,9 @@ void draw_task_icon (Task *tsk, int text_width)
 
 	// Render
 	imlib_context_set_image (tsk->icon[tsk->current_state]);
-	if (server.real_transparency) {
-		render_image(tsk->area.pix, pos_x, panel->g_task.icon_posy, imlib_image_get_width(), imlib_image_get_height() );
-	}
-	else {
-		imlib_context_set_drawable(tsk->area.pix);
-		imlib_render_image_on_drawable (pos_x, panel->g_task.icon_posy);
-	}
+	imlib_context_set_blend(1);
+	imlib_context_set_drawable(tsk->area.pix);
+	imlib_render_image_on_drawable(pos_x, panel->g_task.icon_posy);
 }
 
 
@@ -371,19 +388,11 @@ void draw_task (void *obj, cairo_t *c)
 		pango_layout_get_pixel_size (layout, &width, &height);
 
 		config_text = &panel->g_task.font[tsk->current_state];
-		cairo_set_source_rgba (c, config_text->color[0], config_text->color[1], config_text->color[2], config_text->alpha);
 
-		pango_cairo_update_layout (c, layout);
 		double text_posy = (panel->g_task.area.height - height) / 2.0;
-		cairo_move_to (c, panel->g_task.text_posx, text_posy);
-		pango_cairo_show_layout (c, layout);
 
-		if (panel->g_task.font_shadow) {
-			cairo_set_source_rgba (c, 0.0, 0.0, 0.0, 0.5);
-			pango_cairo_update_layout (c, layout);
-			cairo_move_to (c, panel->g_task.text_posx + 1, text_posy + 1);
-			pango_cairo_show_layout (c, layout);
-		}
+		draw_text(layout, c, panel->g_task.text_posx, text_posy, config_text, panel->font_shadow);
+
 		g_object_unref (layout);
 	}
 
@@ -407,32 +416,26 @@ void on_change_task (void *obj)
 
 // Given a pointer to the active task (active_task) and a pointer
 // to the task that is currently under the mouse (current_task),
-// return a pointer to the active task that is on the same desktop
-// as current_task. Normally this is simply active_task, except when
-// it is set to appear on all desktops. In that case we search for
-// another Task on current_task's taskbar, with the same window as
-// active_task.
+// returns a pointer to the active task.
 Task *find_active_task(Task *current_task, Task *active_task)
 {
-	if (active_task == 0)
+	if (active_task == NULL)
 		return current_task;
-	if (active_task->desktop != ALLDESKTOP)
-		return active_task;
-	if (current_task == 0)
-		return active_task;
 
 	GSList *l0;
 	Task *tsk;
 	Taskbar* tskbar = current_task->area.parent;
 
 	l0 = tskbar->area.list;
-	if (taskbarname_enabled) l0 = l0->next;
+	if (taskbarname_enabled)
+		l0 = l0->next;
 	for (; l0 ; l0 = l0->next) {
 		tsk = l0->data;
 		if (tsk->win == active_task->win)
 			return tsk;
 	}
-	return active_task;
+
+	return current_task;
 }
 
 Task *next_task(Task *tsk)
@@ -514,7 +517,7 @@ void set_task_state(Task *tsk, int state)
 	if (tsk == 0 || state < 0 || state >= TASK_STATE_COUNT)
 		return;
 
-	if (tsk->current_state != state) {
+	if (tsk->current_state != state || hide_task_diff_monitor) {
 		GPtrArray* task_group = task_get_tasks(tsk->win);
 		if (task_group) {
 			int i;
@@ -527,6 +530,25 @@ void set_task_state(Task *tsk, int state)
 					tsk1->area.redraw = 1;
 				if (state == TASK_ACTIVE && g_slist_find(urgent_list, tsk1))
 					del_urgent(tsk1);
+				// Show only the active task
+				int hide = 0;
+				if (hide_inactive_tasks) {
+					if (state != TASK_ACTIVE) {
+						hide = 1;
+					}
+				}
+				if (window_get_monitor(tsk->win) != ((Panel*)tsk->area.panel)->monitor &&
+					(hide_task_diff_monitor || nb_panel > 1)) {
+					hide = 1;
+				}
+				if (1 - hide != tsk1->area.on_screen) {
+					tsk1->area.on_screen = 1 - hide;
+					set_task_redraw(tsk1);
+					Panel *p = (Panel*)tsk->area.panel;
+					tsk->area.resize = 1;
+					p->taskbar->area.resize = 1;
+					p->area.resize = 1;
+				}
 			}
 			panel_refresh = 1;
 		}
@@ -580,16 +602,20 @@ void add_urgent(Task *tsk)
 	// not yet in the list, so we have to add it
 	urgent_list = g_slist_prepend(urgent_list, tsk);
 
-	if (urgent_timeout == 0)
-		urgent_timeout = add_timeout(10, 1000, blink_urgent, 0);
+	if (!urgent_timeout)
+		urgent_timeout = add_timeout(10, 1000, blink_urgent, 0, &urgent_timeout);
+
+	Panel *panel = tsk->area.panel;
+	if (panel->is_hidden)
+		autohide_show(panel);
 }
 
 
 void del_urgent(Task *tsk)
 {
 	urgent_list = g_slist_remove(urgent_list, tsk);
-	if (urgent_list == 0) {
+	if (!urgent_list) {
 		stop_timeout(urgent_timeout);
-		urgent_timeout = 0;
+		urgent_timeout = NULL;
 	}
 }

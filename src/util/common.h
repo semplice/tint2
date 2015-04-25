@@ -10,6 +10,7 @@
 #define WM_CLASS_TINT   "panel"
 
 #include <Imlib2.h>
+#include <pango/pangocairo.h>
 #include "area.h"
 
 /*
@@ -43,6 +44,13 @@ int parse_line (const char *line, char **key, char **value);
 // execute a command by calling fork
 void tint_exec(const char* command);
 
+// Returns a copy of s in which "~" is expanded to the path to the user's home directory.
+// The returned string must be freed by the caller.
+char *expand_tilde(char *s);
+
+// The opposite of expand_tilde: replaces the path to the user's home directory with "~".
+// The returned string must be freed by the caller.
+char *contract_tilde(char *s);
 
 // conversion
 int hex_char_to_int (char c);
@@ -57,5 +65,8 @@ void adjust_asb(DATA32 *data, int w, int h, int alpha, float satur, float bright
 void createHeuristicMask(DATA32* data, int w, int h);
 
 void render_image(Drawable d, int x, int y, int w, int h);
+
+void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, int font_shadow);
+
 #endif
 

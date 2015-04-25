@@ -12,18 +12,22 @@
 #include "taskbarname.h"
 
 enum { TASKBAR_NORMAL, TASKBAR_ACTIVE, TASKBAR_STATE_COUNT };
-extern GHashTable* win_to_task_table;
+extern GHashTable *win_to_task_table;
 extern Task *task_active;
 extern Task *task_drag;
 extern int taskbar_enabled;
-
+extern int taskbar_distribute_size;
+extern int hide_inactive_tasks;
+extern int hide_task_diff_monitor;
+enum { TASKBAR_NOSORT, TASKBAR_SORT_CENTER, TASKBAR_SORT_TITLE };
+extern int taskbar_sort_method;
 
 typedef struct {
 	// always start with area
 	Area area;
 	Pixmap state_pix[TASKBAR_STATE_COUNT];
 
-	char *name;
+	gchar *name;
 	int  posy;
 } Taskbarname;
 
@@ -72,6 +76,8 @@ void set_taskbar_state(Taskbar *tskbar, int state);
 // show/hide taskbar according to current desktop
 void visible_taskbar(void *p);
 
+void sort_taskbar_for_win(Window win);
+void sort_tasks(Taskbar *taskbar);
 
 #endif
 

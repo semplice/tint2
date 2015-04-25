@@ -37,6 +37,7 @@
 int signal_pending;
 // --------------------------------------------------
 // mouse events
+int mouse_left;
 int mouse_middle;
 int mouse_right;
 int mouse_scroll_up;
@@ -52,6 +53,7 @@ int panel_position;
 int panel_horizontal;
 int panel_refresh;
 int task_dragged;
+char *panel_window_name = NULL;
 
 int panel_autohide;
 int panel_autohide_show_timeout;
@@ -80,7 +82,7 @@ void default_panel()
 	task_dragged = 0;
 	panel_horizontal = 1;
 	panel_position = CENTER;
-	panel_items_order = 0;
+	panel_items_order = NULL;
 	panel_autohide = 0;
 	panel_autohide_show_timeout = 0;
 	panel_autohide_hide_timeout = 0;
@@ -88,8 +90,10 @@ void default_panel()
 	panel_strut_policy = STRUT_FOLLOW_SIZE;
 	panel_dock = 0;  // default not in the dock
 	panel_layer = BOTTOM_LAYER;  // default is bottom layer
+	panel_window_name = strdup("tint2");
 	wm_menu = 0;
 	max_tick_urgent = 14;
+	mouse_left = TOGGLE_ICONIFY;
 	backgrounds = g_array_new(0, 0, sizeof(Background));
 
 	memset(&panel_config, 0, sizeof(Panel));
@@ -102,28 +106,40 @@ void default_panel()
 
 void cleanup_panel()
 {
-	if (!panel1) return;
+	if (!panel1)
+		return;
 
 	cleanup_taskbar();
-	// taskbarname_font_desc freed here because cleanup_taskbarname() called on _NET_NUMBER_OF_DESKTOPS
-	if (taskbarname_font_desc)	pango_font_description_free(taskbarname_font_desc);
 
 	int i;
 	Panel *p;
-	for (i=0 ; i < nb_panel ; i++) {
+	for (i = 0; i < nb_panel; i++) {
 		p = &panel1[i];
 
 		free_area(&p->area);
-		if (p->temp_pmap) XFreePixmap(server.dsp, p->temp_pmap);
-		if (p->hidden_pixmap) XFreePixmap(server.dsp, p->hidden_pixmap);
-		if (p->main_win) XDestroyWindow(server.dsp, p->main_win);
+		if (p->temp_pmap)
+			XFreePixmap(server.dsp, p->temp_pmap);
+		p->temp_pmap = 0;
+		if (p->hidden_pixmap)
+			XFreePixmap(server.dsp, p->hidden_pixmap);
+		p->hidden_pixmap = 0;
+		if (p->main_win)
+			XDestroyWindow(server.dsp, p->main_win);
+		p->main_win = 0;
+		stop_timeout(p->autohide_timeout);
 	}
 
-	if (panel_items_order) g_free(panel_items_order);
-	if (panel1) free(panel1);
+	free(panel_items_order);
+	panel_items_order = NULL;
+	free(panel_window_name);
+	panel_window_name = NULL;
+	free(panel1);
+	panel1 = NULL;
 	if (backgrounds)
 		g_array_free(backgrounds, 1);
-	if (panel_config.g_task.font_desc) pango_font_description_free(panel_config.g_task.font_desc);
+	backgrounds = NULL;
+	pango_font_description_free(panel_config.g_task.font_desc);
+	panel_config.g_task.font_desc = NULL;
 }
 
 void init_panel()
@@ -152,7 +168,7 @@ void init_panel()
 	else
 		nb_panel = server.nb_monitor;
 
-	panel1 = malloc(nb_panel * sizeof(Panel));
+	panel1 = calloc(nb_panel, sizeof(Panel));
 	for (i=0 ; i < nb_panel ; i++) {
 		memcpy(&panel1[i], &panel_config, sizeof(Panel));
 	}
@@ -163,7 +179,7 @@ void init_panel()
 
 		if (panel_config.monitor < 0)
 			p->monitor = i;
-		if ( p->area.bg == 0 )
+		if (!p->area.bg)
 			p->area.bg = &g_array_index(backgrounds, Background, 0);
 		p->area.parent = p;
 		p->area.panel = p;
@@ -182,9 +198,7 @@ void init_panel()
 			if (panel_items_order[k] == 'B')
 				init_battery_panel(p);
 #endif
-			if (panel_items_order[k] == 'S' && i==0) {
-				// TODO : check systray is only on 1 panel
-				// at the moment only on panel1[0] allowed
+			if (panel_items_order[k] == 'S' && systray_on_monitor(i, nb_panel)) {
 				init_systray_panel(p);
 				refresh_systray = 1;
 			}
@@ -218,7 +232,7 @@ void init_panel()
 		}
 
 		if (panel_autohide)
-			add_timeout(panel_autohide_hide_timeout, 0, autohide_hide, p);
+			autohide_trigger_hide(p);
 		
 		visible_taskbar(p);
 	}
@@ -323,6 +337,87 @@ int resize_panel(void *obj)
 			panel->taskbar[i].area.resize = 1;
 		}
 	}
+	if (panel_mode == MULTI_DESKTOP && taskbar_enabled && taskbar_distribute_size) {
+		// Distribute the available space between taskbars
+		Panel *panel = (Panel*)obj;
+
+		// Compute the total available size, and the total size requested by the taskbars
+		int total_size = 0;
+		int total_name_size = 0;
+		int total_items = 0;
+		int i;
+		for (i = 0; i < panel->nb_desktop; i++) {
+			if (panel_horizontal) {
+				total_size += panel->taskbar[i].area.width;
+			} else {
+				total_size += panel->taskbar[i].area.height;
+			}
+
+			Taskbar *taskbar = &panel->taskbar[i];
+			GSList *l;
+			for (l = taskbar->area.list; l; l = l->next) {
+				Area *child = l->data;
+				if (!child->on_screen)
+					continue;
+				total_items++;
+			}
+			if (taskbarname_enabled) {
+				if (taskbar->area.list) {
+					total_items--;
+					Area *name = taskbar->area.list->data;
+					if (panel_horizontal) {
+						total_name_size += name->width;
+					} else {
+						total_name_size += name->height;
+					}
+				}
+			}
+		}
+		// Distribute the space proportionally to the requested size (that is, to the
+		// number of tasks in each taskbar)
+		if (total_items) {
+			int actual_name_size;
+			if (total_name_size <= total_size) {
+				actual_name_size = total_name_size / panel->nb_desktop;
+			} else {
+				actual_name_size = total_size / panel->nb_desktop;
+			}
+			total_size -= total_name_size;
+
+			for (i = 0; i < panel->nb_desktop; i++) {
+				Taskbar *taskbar = &panel->taskbar[i];
+
+				int requested_size = (2 * taskbar->area.bg->border.width) + (2 * taskbar->area.paddingxlr);
+				int items = 0;
+				GSList *l = taskbar->area.list;
+				if (taskbarname_enabled)
+					l = l->next;
+				for (; l; l = l->next) {
+					Area *child = l->data;
+					if (!child->on_screen)
+						continue;
+					items++;
+					if (panel_horizontal) {
+						requested_size += child->width + taskbar->area.paddingy;
+					} else {
+						requested_size += child->height + taskbar->area.paddingx;
+					}
+				}
+				if (panel_horizontal) {
+					requested_size -= taskbar->area.paddingy;
+				} else {
+					requested_size -= taskbar->area.paddingx;
+				}
+
+				if (panel_horizontal) {
+					taskbar->area.width = actual_name_size + items / (float)total_items * total_size;
+				} else {
+					taskbar->area.height = actual_name_size + items / (float)total_items * total_size;
+				}
+				taskbar->area.resize = 1;
+			}
+		}
+	}
 	return 0;
 }
 
@@ -392,8 +487,10 @@ void set_panel_items_order(Panel *p)
 	}
 
 	for (k=0 ; k < strlen(panel_items_order) ; k++) {
-		if (panel_items_order[k] == 'L') 
+		if (panel_items_order[k] == 'L') {
 			p->area.list = g_slist_append(p->area.list, &p->launcher);
+			p->launcher.area.resize = 1;
+		}
 		if (panel_items_order[k] == 'T') {
 			for (j=0 ; j < p->nb_desktop ; j++)
 				p->area.list = g_slist_append(p->area.list, &p->taskbar[j]);
@@ -402,9 +499,8 @@ void set_panel_items_order(Panel *p)
 		if (panel_items_order[k] == 'B') 
 			p->area.list = g_slist_append(p->area.list, &p->battery);
 #endif
-		if (panel_items_order[k] == 'S' && p == panel1) {
-			// TODO : check systray is only on 1 panel
-			// at the moment only on panel1[0] allowed
+		int i = p - panel1;
+		if (panel_items_order[k] == 'S' && systray_on_monitor(i, nb_panel)) {
 			p->area.list = g_slist_append(p->area.list, &systray);
 		}
 		if (panel_items_order[k] == 'C')
@@ -416,22 +512,24 @@ void set_panel_items_order(Panel *p)
 
 void set_panel_properties(Panel *p)
 {
-	XStoreName (server.dsp, p->main_win, "tint2");
+	XStoreName (server.dsp, p->main_win, panel_window_name);
+	XSetIconName (server.dsp, p->main_win, panel_window_name);
 
 	gsize len;
-	gchar *name = g_locale_to_utf8("tint2", -1, NULL, &len, NULL);
+	gchar *name = g_locale_to_utf8(panel_window_name, -1, NULL, &len, NULL);
 	if (name != NULL) {
 		XChangeProperty(server.dsp, p->main_win, server.atom._NET_WM_NAME, server.atom.UTF8_STRING, 8, PropModeReplace, (unsigned char *) name, (int) len);
+		XChangeProperty(server.dsp, p->main_win, server.atom._NET_WM_ICON_NAME, server.atom.UTF8_STRING, 8, PropModeReplace, (unsigned char *) name, (int) len);
 		g_free(name);
 	}
 
 	// Dock
-	long val = server.atom._NET_WM_WINDOW_TYPE_DOCK;
+	long val = panel_dock ? server.atom._NET_WM_WINDOW_TYPE_DOCK : server.atom._NET_WM_WINDOW_TYPE_SPLASH;
 	XChangeProperty (server.dsp, p->main_win, server.atom._NET_WM_WINDOW_TYPE, XA_ATOM, 32, PropModeReplace, (unsigned char *) &val, 1);
 
-	// Sticky and below other window
 	val = ALLDESKTOP;
 	XChangeProperty (server.dsp, p->main_win, server.atom._NET_WM_DESKTOP, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) &val, 1);
+
 	Atom state[4];
 	state[0] = server.atom._NET_WM_STATE_SKIP_PAGER;
 	state[1] = server.atom._NET_WM_STATE_SKIP_TASKBAR;
@@ -440,17 +538,18 @@ void set_panel_properties(Panel *p)
 	int nb_atoms = panel_layer == NORMAL_LAYER ? 3 : 4;
 	XChangeProperty (server.dsp, p->main_win, server.atom._NET_WM_STATE, XA_ATOM, 32, PropModeReplace, (unsigned char *) state, nb_atoms);
 
-	// Unfocusable
 	XWMHints wmhints;
+	memset(&wmhints, 0, sizeof(wmhints));
 	if (panel_dock) {
+		// Necessary for placing the panel into the dock on Openbox and Fluxbox.
+		// See https://code.google.com/p/tint2/issues/detail?id=465
 		wmhints.icon_window = wmhints.window_group = p->main_win;
 		wmhints.flags = StateHint | IconWindowHint;
 		wmhints.initial_state = WithdrawnState;
 	}
-	else {
-		wmhints.flags = InputHint;
-		wmhints.input = False;
-	}
+	// We do not need keyboard input focus.
+	wmhints.flags |= InputHint;
+	wmhints.input = False;
 	XSetWMHints(server.dsp, p->main_win, &wmhints);
 
 	// Undecorated
@@ -713,10 +812,7 @@ Area* click_area(Panel *panel, int x, int y)
 
 void stop_autohide_timeout(Panel* p)
 {
-	if (p->autohide_timeout) {
-		stop_timeout(p->autohide_timeout);
-		p->autohide_timeout = 0;
-	}
+	stop_timeout(p->autohide_timeout);
 }
 
 
@@ -725,8 +821,6 @@ void autohide_show(void* p)
 	Panel* panel = p;
 	stop_autohide_timeout(panel);
 	panel->is_hidden = 0;
-	if (panel_strut_policy == STRUT_FOLLOW_SIZE)
-		update_strut(p);
 
 	XMapSubwindows(server.dsp, panel->main_win);  // systray windows
 	if (panel_horizontal) {
@@ -741,6 +835,8 @@ void autohide_show(void* p)
 		else
 			XMoveResizeWindow(server.dsp, panel->main_win, panel->posx, panel->posy, panel->area.width, panel->area.height);
 	}
+	if (panel_strut_policy == STRUT_FOLLOW_SIZE)
+		update_strut(p);
 	refresh_systray = 1;   // ugly hack, because we actually only need to call XSetBackgroundPixmap
 	panel_refresh = 1;
 }
@@ -777,10 +873,7 @@ void autohide_trigger_show(Panel* p)
 {
 	if (!p)
 		return;
-	if (p->autohide_timeout)
-		change_timeout(p->autohide_timeout, panel_autohide_show_timeout, 0, autohide_show, p);
-	else
-		p->autohide_timeout = add_timeout(panel_autohide_show_timeout, 0, autohide_show, p);
+	change_timeout(&p->autohide_timeout, panel_autohide_show_timeout, 0, autohide_show, p);
 }
 
 
@@ -795,8 +888,5 @@ void autohide_trigger_hide(Panel* p)
 	if (XQueryPointer(server.dsp, p->main_win, &root, &child, &xr, &yr, &xw, &yw, &mask))
 		if (child) return;  // mouse over one of the system tray icons
 
-	if (p->autohide_timeout)
-		change_timeout(p->autohide_timeout, panel_autohide_hide_timeout, 0, autohide_hide, p);
-	else
-		p->autohide_timeout = add_timeout(panel_autohide_hide_timeout, 0, autohide_hide, p);
+	change_timeout(&p->autohide_timeout, panel_autohide_hide_timeout, 0, autohide_hide, p);
 }

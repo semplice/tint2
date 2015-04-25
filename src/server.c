@@ -28,8 +28,9 @@
 
 #include "server.h"
 #include "config.h"
-#include "task.h"
 #include "window.h"
+
+Server_global server;
 
 void server_catch_error (Display *d, XErrorEvent *ev){}
 
@@ -71,6 +72,7 @@ void server_init_atoms ()
 	server.atom._NET_WM_STRUT = XInternAtom (server.dsp, "_NET_WM_STRUT", False);
 	server.atom._NET_WM_ICON = XInternAtom (server.dsp, "_NET_WM_ICON", False);
 	server.atom._NET_WM_ICON_GEOMETRY = XInternAtom(server.dsp, "_NET_WM_ICON_GEOMETRY", False );
+	server.atom._NET_WM_ICON_NAME = XInternAtom(server.dsp, "_NET_WM_ICON_NAME", False );
 	server.atom._NET_CLOSE_WINDOW = XInternAtom (server.dsp, "_NET_CLOSE_WINDOW", False);
 	server.atom.UTF8_STRING = XInternAtom (server.dsp, "UTF8_STRING", False);
 	server.atom._NET_SUPPORTING_WM_CHECK = XInternAtom (server.dsp, "_NET_SUPPORTING_WM_CHECK", False);
@@ -81,7 +83,7 @@ void server_init_atoms ()
 	server.atom.__SWM_VROOT = XInternAtom(server.dsp, "__SWM_VROOT", False);
 	server.atom._MOTIF_WM_HINTS = XInternAtom(server.dsp, "_MOTIF_WM_HINTS", False);
 	server.atom.WM_HINTS = XInternAtom(server.dsp, "WM_HINTS", False);
-	char *name = g_strdup_printf("_XSETTINGS_S%d", DefaultScreen(server.dsp));
+	gchar *name = g_strdup_printf("_XSETTINGS_S%d", DefaultScreen(server.dsp));
 	server.atom._XSETTINGS_SCREEN = XInternAtom(server.dsp, name, False);
 	g_free(name);
 	server.atom._XSETTINGS_SETTINGS = XInternAtom(server.dsp, "_XSETTINGS_SETTINGS", False);
@@ -114,16 +116,25 @@ void server_init_atoms ()
 
 void cleanup_server()
 {
-	if (server.colormap) XFreeColormap(server.dsp, server.colormap);
-	if (server.colormap32) XFreeColormap(server.dsp, server.colormap32);
+	if (server.colormap)
+		XFreeColormap(server.dsp, server.colormap);
+	server.colormap = 0;
+	if (server.colormap32)
+		XFreeColormap(server.dsp, server.colormap32);
+	server.colormap32 = 0;
 	if (server.monitor) {
 		int i;
-		for (i=0; i<server.nb_monitor; ++i)
-			if (server.monitor[i].names)
-				g_strfreev(server.monitor[i].names);
+		for (i = 0; i < server.nb_monitor; ++i) {
+			g_strfreev(server.monitor[i].names);
+			server.monitor[i].names = NULL;
+		}
 		free(server.monitor);
+		server.monitor = NULL;
 	}
-	if (server.gc) XFreeGC(server.dsp, server.gc);
+	if (server.gc)
+		XFreeGC(server.dsp, server.gc);
+	server.gc = NULL;
+	server.disable_transparency = 0;
 }
 
 
@@ -271,15 +282,27 @@ void get_monitors()
 
 		if (res && res->ncrtc >= nbmonitor) {
 			// use xrandr to identify monitors (does not work with proprietery nvidia drivers)
+
+			// Workaround for issue https://code.google.com/p/tint2/issues/detail?id=353
+			// on some recent configs, XRRGetScreenResourcesCurrent returns a fantom monitor at last position
+			{
+				int i = res->ncrtc - 1;
+				XRRCrtcInfo* crtc_info = XRRGetCrtcInfo(server.dsp, res, res->crtcs[i]);
+				if (!(crtc_info->x || crtc_info->y || crtc_info->width || crtc_info->height)) {
+					res->ncrtc -= 1;
+				}
+				XRRFreeCrtcInfo(crtc_info);
+			}
+
 			printf("xRandr: Found crtc's: %d\n", res->ncrtc );
-			server.monitor = malloc(res->ncrtc * sizeof(Monitor));
+			server.monitor = calloc(res->ncrtc, sizeof(Monitor));
 			for (i=0; i<res->ncrtc; ++i) {
 				XRRCrtcInfo* crtc_info = XRRGetCrtcInfo(server.dsp, res, res->crtcs[i]);
 				server.monitor[i].x = crtc_info->x;
 				server.monitor[i].y = crtc_info->y;
 				server.monitor[i].width = crtc_info->width;
 				server.monitor[i].height = crtc_info->height;
-				server.monitor[i].names = malloc((crtc_info->noutput+1) * sizeof(char*));
+				server.monitor[i].names = calloc((crtc_info->noutput+1), sizeof(gchar*));
 				for (j=0; j<crtc_info->noutput; ++j) {
 					XRROutputInfo* output_info = XRRGetOutputInfo(server.dsp, res, crtc_info->outputs[j]);
 					printf("xRandr: Linking output %s with crtc %d\n", output_info->name, i);
@@ -292,7 +315,7 @@ void get_monitors()
 			nbmonitor = res->ncrtc;
 		}
 		else if (info && nbmonitor > 0) {
-			server.monitor = malloc(nbmonitor * sizeof(Monitor));
+			server.monitor = calloc(nbmonitor, sizeof(Monitor));
 			for (i=0 ; i < nbmonitor ; i++) {
 				server.monitor[i].x = info[i].x_org;
 				server.monitor[i].y = info[i].y_org;
@@ -330,7 +353,7 @@ next:
 
 	if (!server.nb_monitor) {
 		server.nb_monitor = 1;
-		server.monitor = malloc(sizeof(Monitor));
+		server.monitor = calloc(1, sizeof(Monitor));
 		server.monitor[0].x = server.monitor[0].y = 0;
 		server.monitor[0].width = DisplayWidth (server.dsp, server.screen);
 		server.monitor[0].height = DisplayHeight (server.dsp, server.screen);
@@ -338,6 +361,10 @@ next:
 	}
 }
 
+int server_get_number_of_desktops()
+{
+	return get_property32(server.root_win, server.atom._NET_NUMBER_OF_DESKTOPS, XA_CARDINAL);
+}
 
 void get_desktops()
 {
@@ -346,7 +373,7 @@ void get_desktops()
 	// detect number of desktops
 	// wait 15s to leave some time for window manager startup
 	for (i=0 ; i < 15 ; i++) {
-		server.nb_desktop = server_get_number_of_desktop ();
+		server.nb_desktop = server_get_number_of_desktops();
 		if (server.nb_desktop > 0) break;
 		sleep(1);
 	}
@@ -391,7 +418,7 @@ void server_init_visual()
 		server.colormap32 = XCreateColormap(server.dsp, server.root_win, visual, AllocNone);
 	}
 
-	if (visual && server.composite_manager != None && snapshot_path == 0) {
+	if (!server.disable_transparency && visual && server.composite_manager != None && snapshot_path == 0) {
 		XSetWindowAttributes attrs;
 		attrs.event_mask = StructureNotifyMask;
 		XChangeWindowAttributes (server.dsp, server.composite_manager, CWEventMask, &attrs);
