@@ -1,5 +1,5 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Source: http://code.google.com/p/tint2/
+Source: https://gitlab.com/o9000/tint2.git
 
 Files: *
 Copyright: 2007-2008 Pål Staurland <staura@gmail.com>
