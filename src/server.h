@@ -57,6 +57,7 @@ typedef struct Global_atom
 	Atom _NET_WM_STRUT;
 	Atom _NET_WM_ICON;
 	Atom _NET_WM_ICON_GEOMETRY;
+	Atom _NET_WM_ICON_NAME;
 	Atom _NET_CLOSE_WINDOW;
 	Atom UTF8_STRING;
 	Atom _NET_SUPPORTING_WM_CHECK;
@@ -96,7 +97,7 @@ typedef struct Monitor
 	int y;
 	int width;
 	int height;
-	char** names;
+	gchar** names;
 } Monitor;
 
 
@@ -106,6 +107,7 @@ typedef struct
 	Window root_win;
 	Window composite_manager;
 	int real_transparency;
+	int disable_transparency;
 	// current desktop
 	int desktop;
 	int screen;
@@ -130,7 +132,7 @@ typedef struct
 } Server_global;
 
 
-Server_global server;
+extern Server_global server;
 
 
 // freed memory
@@ -150,6 +152,6 @@ void get_root_pixmap();
 // detect monitors and desktops
 void get_monitors();
 void get_desktops();
-
+int server_get_number_of_desktops();
 
 #endif

@@ -41,6 +41,8 @@ GSList *icons;
 #define SYSTEM_TRAY_BEGIN_MESSAGE   1
 #define SYSTEM_TRAY_CANCEL_MESSAGE  2
 
+#define FORCE_COMPOSITED_RENDERING  1
+
 // selection window
 Window net_sel_win = None;
 
@@ -49,6 +51,7 @@ Systraybar systray;
 int refresh_systray;
 int systray_enabled;
 int systray_max_icon_size;
+int systray_monitor;
 
 // background pixmap if we render ourselves the icons
 static Pixmap render_background;
@@ -71,6 +74,7 @@ void cleanup_systray()
 	stop_net();
 	systray_enabled = 0;
 	systray_max_icon_size = 0;
+	systray_monitor = 0;
 	systray.area.on_screen = 0;
 	free_area(&systray.area);
 	if (render_background) {
@@ -98,7 +102,7 @@ void init_systray_panel(void *p)
 {
 	systray.area.parent = p;
 	systray.area.panel = p;
-	if (systray.area.bg == 0)
+	if (!systray.area.bg)
 		systray.area.bg = &g_array_index(backgrounds, Background, 0);
 
 	GSList *l;
@@ -117,7 +121,7 @@ void init_systray_panel(void *p)
 
 void draw_systray(void *obj, cairo_t *c)
 {
-	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+	if (FORCE_COMPOSITED_RENDERING || server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		if (render_background) XFreePixmap(server.dsp, render_background);
 		render_background = XCreatePixmap(server.dsp, server.root_win, systray.area.width, systray.area.height, server.depth);
 		XCopyArea(server.dsp, systray.area.pix, render_background, server.gc, 0, 0, systray.area.width, systray.area.height, 0, 0);
@@ -171,6 +175,9 @@ void on_change_systray (void *obj)
 {
 	// here, systray.area.posx/posy are defined by rendering engine. so we can calculate position of tray icon.
 	Systraybar *sysbar = obj;
+	if (sysbar->icons_per_column == 0 || sysbar->icons_per_row == 0)
+		return;
+
 	Panel *panel = sysbar->area.panel;
 	int i, posx, posy;
 	int start = panel->area.bg->border.width + panel->area.paddingy + systray.area.bg->border.width + systray.area.paddingy + sysbar->marging/2;
@@ -266,7 +273,7 @@ void start_net()
 	long orient = 0;
 	XChangeProperty(server.dsp, net_sel_win, server.atom._NET_SYSTEM_TRAY_ORIENTATION, XA_CARDINAL, 32, PropModeReplace, (unsigned char *) &orient, 1);
 	VisualID vid;
-	if (server.visual32 && (systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0))
+	if (server.visual32 && (FORCE_COMPOSITED_RENDERING || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0))
 		vid = XVisualIDFromVisual(server.visual32);
 	else
 		vid = XVisualIDFromVisual(server.visual);
@@ -303,7 +310,7 @@ void stop_net()
 			remove_icon((TrayWindow*)systray.list_icons->data);
 
 		g_slist_free(systray.list_icons);
-		systray.list_icons = 0;
+		systray.list_icons = NULL;
 	}
 
 	if (net_sel_win != None) {
@@ -354,6 +361,12 @@ gboolean add_icon(Window id)
 	Panel *panel = systray.area.panel;
 	int hide = 0;
 
+	GSList *l;
+	for (l = systray.list_icons; l; l = l->next) {
+		if (((TrayWindow*)l->data)->tray_id == id)
+			return FALSE;
+	}
+
 	error = FALSE;
 	XWindowAttributes attr;
 	if ( XGetWindowAttributes(server.dsp, id, &attr) == False ) return FALSE;
@@ -362,7 +375,7 @@ gboolean add_icon(Window id)
 	Visual* visual = server.visual;
 	//printf("icon with depth: %d, width %d, height %d\n", attr.depth, attr.width, attr.height);
 	//printf("icon with depth: %d\n", attr.depth);
-	if (attr.depth != server.depth || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+	if (attr.depth != server.depth || FORCE_COMPOSITED_RENDERING || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		visual = attr.visual;
 		set_attr.colormap = attr.colormap;
 		set_attr.background_pixel = 0;
@@ -444,7 +457,7 @@ gboolean add_icon(Window id)
 		systray.list_icons = g_slist_insert_sorted(systray.list_icons, traywin, compare_traywindows);
 	//printf("add_icon id %lx, %d\n", id, g_slist_length(systray.list_icons));
 
-	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+	if (FORCE_COMPOSITED_RENDERING || server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		traywin->damage = XDamageCreate(server.dsp, traywin->id, XDamageReportRawRectangles);
 		XCompositeRedirectWindow(server.dsp, traywin->id, CompositeRedirectManual);
 	}
@@ -483,14 +496,13 @@ void remove_icon(TrayWindow *traywin)
 	XDestroyWindow(server.dsp, traywin->id);
 	XSync(server.dsp, False);
 	XSetErrorHandler(old);
-	if (traywin->render_timeout)
-		stop_timeout(traywin->render_timeout);
+	stop_timeout(traywin->render_timeout);
 	g_free(traywin);
 
 	// check empty systray
 	int count = 0;
 	GSList *l;
-	for (l = systray.list_icons; l ; l = l->next) {
+	for (l = systray.list_icons; l; l = l->next) {
 		if (!((TrayWindow*)l->data)->hide)
 			count++;
 	}
@@ -604,18 +616,15 @@ void systray_render_icon_now(void* t)
 
 void systray_render_icon(TrayWindow* traywin)
 {
-	if (server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
+	if (FORCE_COMPOSITED_RENDERING || server.real_transparency || systray.alpha != 100 || systray.brightness != 0 || systray.saturation != 0) {
 		// wine tray icons update whenever mouse is over them, so we limit the updates to 50 ms
-		if (traywin->render_timeout == 0)
-			traywin->render_timeout = add_timeout(50, 0, systray_render_icon_now, traywin);
+		if (!traywin->render_timeout)
+			traywin->render_timeout = add_timeout(50, 0, systray_render_icon_now, traywin, &traywin->render_timeout);
 	}
 	else {
-		// comment by andreas: I'm still not sure, what exactly we need to do here... Somehow trayicons which do not
-		// offer the same depth as tint2 does, need to draw a background pixmap, but this cannot be done with
-		// XCopyArea... So we actually need XRenderComposite???
-//			Pixmap pix = XCreatePixmap(server.dsp, server.root_win, traywin->width, traywin->height, server.depth);
-//			XCopyArea(server.dsp, panel->temp_pmap, pix, server.gc, traywin->x, traywin->y, traywin->width, traywin->height, 0, 0);
-//			XSetWindowBackgroundPixmap(server.dsp, traywin->id, pix);
+		//			Pixmap pix = XCreatePixmap(server.dsp, server.root_win, traywin->width, traywin->height, server.depth);
+		//			XCopyArea(server.dsp, panel->temp_pmap, pix, server.gc, traywin->x, traywin->y, traywin->width, traywin->height, 0, 0);
+		//			XSetWindowBackgroundPixmap(server.dsp, traywin->id, pix);
 		XClearArea(server.dsp, traywin->tray_id, 0, 0, traywin->width, traywin->height, True);
 	}
 }
@@ -630,4 +639,10 @@ void refresh_systray_icon()
 		if (traywin->hide) continue;
 		systray_render_icon(traywin);
 	}
+}
+
+int systray_on_monitor(int i_monitor, int nb_panels)
+{
+	return (i_monitor == systray_monitor) ||
+			(i_monitor == 0 && (systray_monitor >= nb_panels || systray_monitor < 0));
 }

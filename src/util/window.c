@@ -144,6 +144,16 @@ int window_get_monitor (Window win)
 	else return i;
 }
 
+void window_get_coordinates (Window win, int *x, int *y, int *w, int *h)
+{
+	int dummy_int;
+	unsigned ww, wh, bw, bh;
+ 	Window src;
+ 	XTranslateCoordinates(server.dsp, win, server.root_win, 0, 0, x, y, &src);
+	XGetGeometry(server.dsp, win, &src, &dummy_int, &dummy_int, &ww, &wh, &bw, &bh);
+	*w = ww + bw;
+	*h = wh + bh;
+}
 
 int window_is_iconified (Window win)
 {
@@ -196,11 +206,6 @@ int window_is_skip_taskbar (Window win)
 	return 0;
 }
 
-
-int server_get_number_of_desktop ()
-{
-	return get_property32(server.root_win, server.atom._NET_NUMBER_OF_DESKTOPS, XA_CARDINAL);
-}
 
 
 GSList *server_get_name_of_desktop ()

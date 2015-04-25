@@ -51,12 +51,12 @@ void xsettings_notify_cb (const char *name, XSettingsAction action, XSettingsSet
 	//printf("xsettings_notify_cb\n");
 	if ((action == XSETTINGS_ACTION_NEW || action == XSETTINGS_ACTION_CHANGED) && name != NULL && setting != NULL) {
 		if (!strcmp(name, "Net/IconThemeName") && setting->type == XSETTINGS_TYPE_STRING) {
-			if (icon_theme_name) {
-				if (strcmp(icon_theme_name, setting->data.v_string) == 0)
+			if (icon_theme_name_xsettings) {
+				if (strcmp(icon_theme_name_xsettings, setting->data.v_string) == 0)
 					return;
-				free(icon_theme_name);
+				free(icon_theme_name_xsettings);
 			}
-			icon_theme_name = strdup(setting->data.v_string);
+			icon_theme_name_xsettings = strdup(setting->data.v_string);
 			
 			int i;
 			for (i = 0 ; i < nb_panel ; i++) {
@@ -169,13 +169,13 @@ static XSettingsResult fetch_card32 (XSettingsBuffer *buffer, CARD32 *result)
 
 static XSettingsResult fetch_card8 (XSettingsBuffer *buffer, CARD8 *result)
 {
-  if (BYTES_LEFT (buffer) < 1)
-    return XSETTINGS_ACCESS;
+	if (BYTES_LEFT (buffer) < 1)
+		return XSETTINGS_ACCESS;
 
-  *result = *(CARD8 *)buffer->pos;
-  buffer->pos += 1;
+	*result = *(CARD8 *)buffer->pos;
+	buffer->pos += 1;
 
-  return XSETTINGS_SUCCESS;
+	return XSETTINGS_SUCCESS;
 }
 
 #define XSETTINGS_PAD(n,m) ((n + m - 1) & (~(m-1)))
@@ -192,6 +192,7 @@ static XSettingsList *parse_settings (unsigned char *data, size_t len)
 
 	local_byte_order = xsettings_byte_order ();
 
+	buffer.byte_order = local_byte_order;
 	buffer.pos = buffer.data = data;
 	buffer.len = len;
 
@@ -234,14 +235,14 @@ static XSettingsList *parse_settings (unsigned char *data, size_t len)
 			goto out;
 		}
 
-		setting = malloc (sizeof *setting);
+		setting = calloc (1, sizeof *setting);
 		if (!setting) {
 			result = XSETTINGS_NO_MEM;
 			goto out;
 		}
 		setting->type = XSETTINGS_TYPE_INT; /* No allocated memory */
 
-		setting->name = malloc (name_len + 1);
+		setting->name = calloc (name_len + 1, 1);
 		if (!setting->name) {
 			result = XSETTINGS_NO_MEM;
 			goto out;
@@ -275,7 +276,7 @@ static XSettingsList *parse_settings (unsigned char *data, size_t len)
 				goto out;
 			}
 
-			setting->data.v_string = malloc (v_int + 1);
+			setting->data.v_string = calloc (v_int + 1, 1);
 			if (!setting->data.v_string) {
 				result = XSETTINGS_NO_MEM;
 				goto out;
@@ -399,7 +400,7 @@ XSettingsClient *xsettings_client_new (Display *display, int screen, XSettingsNo
 {
 	XSettingsClient *client;
 
-	client = malloc (sizeof *client);
+	client = calloc (1, sizeof *client);
 	if (!client)
 		return NULL;
 

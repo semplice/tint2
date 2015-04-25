@@ -28,6 +28,7 @@
 #include "timer.h"
 
 static int x, y, width, height;
+static int just_shown;
 
 // the next functions are helper functions for tooltip handling
 void start_show_timeout();
@@ -46,22 +47,26 @@ void default_tooltip()
 	g_tooltip.font_color.color[1] = 1;
 	g_tooltip.font_color.color[2] = 1;
 	g_tooltip.font_color.alpha = 1;
+	just_shown = 0;
 }
 
 void cleanup_tooltip()
 {
 	stop_tooltip_timeout();
-	tooltip_hide(0);
-	tooltip_copy_text(0);
-	if (g_tooltip.window) XDestroyWindow(server.dsp, g_tooltip.window);
-	if (g_tooltip.font_desc) pango_font_description_free(g_tooltip.font_desc);
+	tooltip_hide(NULL);
+	tooltip_copy_text(NULL);
+	if (g_tooltip.window)
+		XDestroyWindow(server.dsp, g_tooltip.window);
+	g_tooltip.window = 0;
+	pango_font_description_free(g_tooltip.font_desc);
+	g_tooltip.font_desc = NULL;
 }
 
 
 void init_tooltip()
 {
 	if (!g_tooltip.font_desc)
-		g_tooltip.font_desc = pango_font_description_from_string("sans 10");
+		g_tooltip.font_desc = pango_font_description_from_string(DEFAULT_FONT);
 	if (g_tooltip.bg == 0)
 		g_tooltip.bg = &g_array_index(backgrounds, Background, 0);
 
@@ -72,7 +77,8 @@ void init_tooltip()
 	attr.background_pixel = 0;
 	attr.border_pixel = 0;
 	unsigned long mask = CWEventMask|CWColormap|CWBorderPixel|CWBackPixel|CWOverrideRedirect;
-	if (g_tooltip.window) XDestroyWindow(server.dsp, g_tooltip.window);
+	if (g_tooltip.window)
+		XDestroyWindow(server.dsp, g_tooltip.window);
 	g_tooltip.window = XCreateWindow(server.dsp, server.root_win, 0, 0, 100, 20, 0, server.depth, InputOutput, server.visual, mask, &attr);
 }
 
@@ -80,10 +86,9 @@ void init_tooltip()
 void tooltip_trigger_show(Area* area, Panel* p, XEvent *e)
 {
 	// Position the tooltip in the center of the area
-	x = area->posx + area->width / 2 + e->xmotion.x_root - e->xmotion.x;
+	x = area->posx + MIN(area->width / 3, 22) + e->xmotion.x_root - e->xmotion.x;
 	y = area->posy + area->height / 2 + e->xmotion.y_root - e->xmotion.y;
-	if (!panel_horizontal)
-		y -= height/2;
+	just_shown = 1;
 	g_tooltip.panel = p;
 	if (g_tooltip.mapped && g_tooltip.area != area) {
 		tooltip_copy_text(area);
@@ -102,10 +107,7 @@ void tooltip_show(void* arg)
 	Window w;
 	XTranslateCoordinates( server.dsp, server.root_win, g_tooltip.panel->main_win, x, y, &mx, &my, &w);
 	Area* area;
-	if (!panel_horizontal)
-		my += height/2; /* we adjusted y in tooltip_trigger_show, revert or we won't find the correct area anymore */
 	area = click_area(g_tooltip.panel, mx, my);
-	stop_tooltip_timeout();
 	if (!g_tooltip.mapped && area->_get_tooltip_text) {
 		tooltip_copy_text(area);
 		g_tooltip.mapped = True;
@@ -201,6 +203,11 @@ void tooltip_update()
 	}
 
 	tooltip_update_geometry();
+	if (just_shown) {
+		if (!panel_horizontal)
+			y -= height/2; // center vertically
+		just_shown = 0;
+	}
 	tooltip_adjust_geometry();
 	XMoveResizeWindow(server.dsp, g_tooltip.window, x, y, width, height);
 
@@ -241,7 +248,9 @@ void tooltip_update()
 	pango_layout_set_height(layout, height*PANGO_SCALE);
 	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
 	// I do not know why this is the right way, but with the below cairo_move_to it seems to be centered (horiz. and vert.)
-	cairo_move_to(c, -r1.x/2+g_tooltip.bg->border.width+g_tooltip.paddingx, -r1.y/2+g_tooltip.bg->border.width+g_tooltip.paddingy);
+	cairo_move_to(c,
+				  -r1.x/2 + g_tooltip.bg->border.width + g_tooltip.paddingx,
+				  -r1.y/2 + 1 + g_tooltip.bg->border.width + g_tooltip.paddingy);
 	pango_cairo_show_layout (c, layout);
 
 	g_object_unref (layout);
@@ -265,7 +274,6 @@ void tooltip_trigger_hide(Tooltip* tooltip)
 
 void tooltip_hide(void* arg)
 {
-	stop_tooltip_timeout();
 	if (g_tooltip.mapped) {
 		g_tooltip.mapped = False;
 		XUnmapWindow(server.dsp, g_tooltip.window);
@@ -276,28 +284,19 @@ void tooltip_hide(void* arg)
 
 void start_show_timeout()
 {
-	if (g_tooltip.timeout)
-		change_timeout(g_tooltip.timeout, g_tooltip.show_timeout_msec, 0, tooltip_show, 0);
-	else
-		g_tooltip.timeout = add_timeout(g_tooltip.show_timeout_msec, 0, tooltip_show, 0);
+	change_timeout(&g_tooltip.timeout, g_tooltip.show_timeout_msec, 0, tooltip_show, 0);
 }
 
 
 void start_hide_timeout()
 {
-	if (g_tooltip.timeout)
-		change_timeout(g_tooltip.timeout, g_tooltip.hide_timeout_msec, 0, tooltip_hide, 0);
-	else
-		g_tooltip.timeout = add_timeout(g_tooltip.hide_timeout_msec, 0, tooltip_hide, 0);
+	change_timeout(&g_tooltip.timeout, g_tooltip.hide_timeout_msec, 0, tooltip_hide, 0);
 }
 
 
 void stop_tooltip_timeout()
 {
-	if (g_tooltip.timeout) {
-		stop_timeout(g_tooltip.timeout);
-		g_tooltip.timeout = 0;
-	}
+	stop_timeout(g_tooltip.timeout);
 }
 
 
@@ -307,6 +306,6 @@ void tooltip_copy_text(Area* area)
 	if (area && area->_get_tooltip_text)
 		g_tooltip.tooltip_text = strdup(area->_get_tooltip_text(area));
 	else
-		g_tooltip.tooltip_text = 0;
+		g_tooltip.tooltip_text = NULL;
 	g_tooltip.area = area;
 }

@@ -40,7 +40,6 @@ typedef struct {
 	// starting position for text ~ task_padding + task_border + icon_size
 	double text_posx, text_height;
 
-	int font_shadow;
 	PangoFontDescription *font_desc;
 	Color font[TASK_STATE_COUNT];
 	int config_font_mask;
@@ -63,6 +62,11 @@ typedef struct {
 	unsigned int icon_height;
 	char *title;
 	int urgent_tick;
+	// These may not be up-to-date
+	int win_x;
+	int win_y;
+	int win_w;
+	int win_h;
 } Task;
 
 

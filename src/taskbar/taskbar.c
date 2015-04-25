@@ -31,6 +31,7 @@
 #include "server.h"
 #include "window.h"
 #include "panel.h"
+#include "strnatcmp.h"
 
 
 /* win_to_task_table holds for every Window an array of tasks. Usually the array contains only one
@@ -42,6 +43,10 @@ GHashTable* win_to_task_table;
 Task *task_active;
 Task *task_drag;
 int taskbar_enabled;
+int taskbar_distribute_size;
+int hide_inactive_tasks;
+int hide_task_diff_monitor;
+int taskbar_sort_method;
 
 guint win_hash(gconstpointer key) { return (guint)*((Window*)key); }
 gboolean win_compare(gconstpointer a, gconstpointer b) { return (*((Window*)a) == *((Window*)b)); }
@@ -50,10 +55,14 @@ void free_ptr_array(gpointer data) { g_ptr_array_free(data, 1); }
 
 void default_taskbar()
 {
-	win_to_task_table = 0;
-	urgent_timeout = 0;
-	urgent_list = 0;
+	win_to_task_table = NULL;
+	urgent_timeout = NULL;
+	urgent_list = NULL;
 	taskbar_enabled = 0;
+	taskbar_distribute_size = 0;
+	hide_inactive_tasks = 0;
+	hide_task_diff_monitor = 0;
+	taskbar_sort_method = TASKBAR_NOSORT;
 	default_taskbarname();
 }
 
@@ -64,28 +73,42 @@ void cleanup_taskbar()
 	int i, j, k;
 
 	cleanup_taskbarname();
-	if (win_to_task_table) g_hash_table_foreach(win_to_task_table, taskbar_remove_task, 0);
-	for (i=0 ; i < nb_panel ; i++) {
-		panel = &panel1[i];
-		for (j=0 ; j < panel->nb_desktop ; j++) {
-			tskbar = &panel->taskbar[j];
-			for (k=0; k<TASKBAR_STATE_COUNT; ++k) {
-				if (tskbar->state_pix[k]) XFreePixmap(server.dsp, tskbar->state_pix[k]);
+	if (win_to_task_table) {
+		while (g_hash_table_size(win_to_task_table)) {
+			GHashTableIter iter;
+			gpointer key, value;
+
+			g_hash_table_iter_init(&iter, win_to_task_table);
+			if (g_hash_table_iter_next(&iter, &key, &value)) {
+				taskbar_remove_task(key, 0, 0);
 			}
-			free_area (&tskbar->area);
+		}
+		g_hash_table_destroy(win_to_task_table);
+		win_to_task_table = NULL;
+	}
+	for (i = 0 ; i < nb_panel; i++) {
+		panel = &panel1[i];
+		for (j = 0; j < panel->nb_desktop; j++) {
+			tskbar = &panel->taskbar[j];
+			for (k = 0; k < TASKBAR_STATE_COUNT; ++k) {
+				if (tskbar->state_pix[k])
+					XFreePixmap(server.dsp, tskbar->state_pix[k]);
+				tskbar->state_pix[k] = 0;
+			}
+			free_area(&tskbar->area);
 			// remove taskbar from the panel
 			panel->area.list = g_slist_remove(panel->area.list, tskbar);
 		}
 		if (panel->taskbar) {
 			free(panel->taskbar);
-			panel->taskbar = 0;
+			panel->taskbar = NULL;
 		}
 	}
 
-	if (win_to_task_table) {
-		g_hash_table_destroy(win_to_task_table);
-		win_to_task_table = 0;
-	}
+	g_slist_free(urgent_list);
+	urgent_list = NULL;
+
+	stop_timeout(urgent_timeout);
 }
 
 
@@ -112,6 +135,8 @@ void init_taskbar_panel(void *p)
 		panel->g_taskbar.background_name[TASKBAR_NORMAL] = &g_array_index(backgrounds, Background, 0);
 		panel->g_taskbar.background_name[TASKBAR_ACTIVE] = &g_array_index(backgrounds, Background, 0);
 	}
+	if (!panel->g_task.font_desc)
+		panel->g_task.font_desc = pango_font_description_from_string(DEFAULT_FONT);
 	if (panel->g_task.area.bg == 0)
 		panel->g_task.area.bg = &g_array_index(backgrounds, Background, 0);
 
@@ -311,8 +336,11 @@ int resize_taskbar(void *obj)
 		text_width = panel->g_task.maximum_width;
 		GSList *l = taskbar->area.list;
 		if (taskbarname_enabled) l = l->next;
-		if (l != NULL) {
-			text_width = ((Task *)l->data)->area.width;
+		for (; l != NULL; l = l->next) {
+			if (((Task *)l->data)->area.on_screen) {
+				text_width = ((Task *)l->data)->area.width;
+				break;
+			}
 		}
 		taskbar->text_width = text_width - panel->g_task.text_posx - panel->g_task.area.bg->border.width - panel->g_task.area.paddingx;
 	}
@@ -389,3 +417,143 @@ void visible_taskbar(void *p)
 	panel_refresh = 1;
 }
 
+#define NONTRIVIAL 2
+gint compare_tasks_trivial(Task *a, Task *b, Taskbar *taskbar)
+{
+	if (a == b)
+		return 0;
+	if (taskbarname_enabled) {
+		if (a == taskbar->area.list->data)
+			return -1;
+		if (b == taskbar->area.list->data)
+			return 1;
+	}
+	return NONTRIVIAL;
+}
+
+gint contained_within(Task *a, Task *b)
+{
+	if ((a->win_x <= b->win_x) &&
+		(a->win_y <= b->win_y) &&
+		(a->win_x + a->win_w >= b->win_x + b->win_w) &&
+		(a->win_y + a->win_h >= b->win_y + b->win_h)) {
+		return 1;
+	}
+	return 0;
+}
+
+gint compare_task_centers(Task *a, Task *b, Taskbar *taskbar)
+{
+	int trivial = compare_tasks_trivial(a, b, taskbar);
+	if (trivial != NONTRIVIAL)
+		return trivial;
+
+	// If a window has the same coordinates and size as the other,
+	// they are considered to be equal in the comparison.
+	if ((a->win_x == b->win_x) &&
+		(a->win_y == b->win_y) &&
+		(a->win_w == b->win_w) &&
+		(a->win_h == b->win_h)) {
+		return 0;
+	}
+
+	// If a window is completely contained in another,
+	// then it is considered to come after (to the right/bottom) of the other.
+	if (contained_within(a, b))
+		return -1;
+	if (contained_within(b, a))
+		return 1;
+
+	// Compare centers
+	int a_horiz_c, a_vert_c, b_horiz_c, b_vert_c;
+	a_horiz_c = a->win_x + a->win_w / 2;
+	b_horiz_c = b->win_x + b->win_w / 2;
+	a_vert_c = a->win_y + a->win_h / 2;
+	b_vert_c = b->win_y + b->win_h / 2;
+	if (panel_horizontal) {
+		if (a_horiz_c != b_horiz_c) {
+			return a_horiz_c - b_horiz_c;
+		}
+		return a_vert_c - b_vert_c;
+	} else {
+		if (a_vert_c != b_vert_c) {
+			return a_vert_c - b_vert_c;
+		}
+		return a_horiz_c - b_horiz_c;
+	}
+}
+
+gint compare_task_titles(Task *a, Task *b, Taskbar *taskbar)
+{
+	int trivial = compare_tasks_trivial(a, b, taskbar);
+	if (trivial != NONTRIVIAL)
+		return trivial;
+	return strnatcasecmp(a->title ? a->title : "", b->title ? b->title : "");
+}
+
+gint compare_tasks(Task *a, Task *b, Taskbar *taskbar)
+{
+	int trivial = compare_tasks_trivial(a, b, taskbar);
+	if (trivial != NONTRIVIAL)
+		return trivial;
+	if (taskbar_sort_method == TASKBAR_NOSORT) {
+		return 0;
+	} else if (taskbar_sort_method == TASKBAR_SORT_CENTER) {
+		return compare_task_centers(a, b, taskbar);
+	} else if (taskbar_sort_method == TASKBAR_SORT_TITLE) {
+		return compare_task_titles(a, b, taskbar);
+	}
+	return 0;
+}
+
+int taskbar_needs_sort(Taskbar *taskbar)
+{
+	if (taskbar_sort_method == TASKBAR_NOSORT)
+		return 0;
+
+	GSList *i, *j;
+	for (i = taskbar->area.list, j = i ? i->next : NULL; i && j; i = i->next, j = j->next) {
+		if (compare_tasks(i->data, j->data, taskbar) > 0) {
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
+void sort_tasks(Taskbar *taskbar)
+{
+	if (!taskbar)
+		return;
+	if (!taskbar_needs_sort(taskbar)) {
+		return;
+	}
+	taskbar->area.list = g_slist_sort_with_data(taskbar->area.list, (GCompareDataFunc)compare_tasks, taskbar);
+	taskbar->area.resize = 1;
+	panel_refresh = 1;
+	((Panel*)taskbar->area.panel)->area.resize = 1;
+}
+
+
+void sort_taskbar_for_win(Window win)
+{
+	if (taskbar_sort_method == TASKBAR_NOSORT)
+		return;
+
+	GPtrArray* task_group = task_get_tasks(win);
+	if (task_group) {
+		int i;
+		Task* tsk0 = g_ptr_array_index(task_group, 0);
+		if (tsk0) {
+			window_get_coordinates(win, &tsk0->win_x, &tsk0->win_y, &tsk0->win_w, &tsk0->win_h);
+		}
+		for (i = 0; i < task_group->len; ++i) {
+			Task* tsk = g_ptr_array_index(task_group, i);
+			tsk->win_x = tsk0->win_x;
+			tsk->win_y = tsk0->win_y;
+			tsk->win_w = tsk0->win_w;
+			tsk->win_h = tsk0->win_h;
+			sort_tasks(tsk->area.parent);
+		}
+	}
+}

@@ -52,6 +52,7 @@ extern Systraybar systray;
 extern int refresh_systray;
 extern int systray_enabled;
 extern int systray_max_icon_size;
+extern int systray_monitor;
 
 // default global data
 void default_systray();
@@ -66,7 +67,7 @@ void init_systray_panel(void *p);
 void draw_systray(void *obj, cairo_t *c);
 int  resize_systray(void *obj);
 void on_change_systray(void *obj);
-
+int systray_on_monitor(int i_monitor, int nb_panels);
 
 // systray protocol
 // many tray icon doesn't manage stop/restart of the systray manager
