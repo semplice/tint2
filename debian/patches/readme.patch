@@ -1,0 +1,18 @@
+Description: Fix README installation
+ File has been renamed upstream.
+Author: Sebastian Reichel <sre@debian.org>
+Last-Update: 2015-04-26
+
+Index: tint2/CMakeLists.txt
+===================================================================
+--- tint2.orig/CMakeLists.txt
++++ tint2/CMakeLists.txt
+@@ -149,7 +149,7 @@ set_target_properties( tint2 PROPERTIES
+ install( TARGETS tint2 DESTINATION bin )
+ install( FILES sample/tint2rc DESTINATION ${SYSCONFDIR}/xdg/tint2 )
+ install( FILES default_icon.png DESTINATION ${DATADIR}/tint2 )
+-install( FILES AUTHORS ChangeLog README DESTINATION ${DOCDIR} )
++install( FILES AUTHORS ChangeLog README.md DESTINATION ${DOCDIR} )
+ install( FILES doc/tint2.1 DESTINATION ${MANDIR}/man1 )
+ if( ENABLE_EXAMPLES )
+   file( GLOB SAMPLEFILES sample/*.tint2rc )
