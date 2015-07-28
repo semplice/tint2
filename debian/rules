@@ -12,6 +12,3 @@ override_dh_strip:
 override_dh_installdocs:
 	dh_installdocs --link-doc=tint2
 	cp -r debian/wiki debian/tint2/usr/share/doc/tint2/html
-
-get-orig-source:
-	wget -O ../tint2_0.11+git20150425~2ecb1c4e.orig.tar.gz "https://gitlab.com/o9000/tint2/repository/archive.tar.gz?ref=2ecb1c4ef487b28ea010799a4c6f6bd8385396c5"
