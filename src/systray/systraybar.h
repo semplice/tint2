@@ -20,6 +20,7 @@
 // Flags for _XEMBED_INFO
 #define XEMBED_MAPPED		(1 << 0)
 
+enum { SYSTRAY_SORT_ASCENDING, SYSTRAY_SORT_DESCENDING, SYSTRAY_SORT_LEFT2RIGHT, SYSTRAY_SORT_RIGHT2LEFT };
 
 typedef struct {
 	// always start with area
@@ -34,8 +35,8 @@ typedef struct {
 
 typedef struct
 {
-	Window id;
-	Window tray_id;
+	Window parent;
+	Window win;
 	int x, y;
 	int width, height;
 	// TODO: manage icon's show/hide
@@ -43,6 +44,13 @@ typedef struct
 	int depth;
 	Damage damage;
 	timeout* render_timeout;
+	int empty;
+	int pid;
+	int chrono;
+    struct timespec time_last_render;
+	int num_fast_renders;
+	int reparented;
+	char *name;
 } TrayWindow;
 
 
@@ -53,6 +61,7 @@ extern int refresh_systray;
 extern int systray_enabled;
 extern int systray_max_icon_size;
 extern int systray_monitor;
+extern int systray_profile;
 
 // default global data
 void default_systray();
@@ -78,8 +87,10 @@ void net_message(XClientMessageEvent *e);
 gboolean add_icon(Window id);
 void remove_icon(TrayWindow *traywin);
 
-void refresh_systray_icon();
-void systray_render_icon(TrayWindow* traywin);
+void refresh_systray_icons();
+void systray_render_icon(void *t);
+void systray_reconfigure_event(TrayWindow *traywin, XEvent *e);
+void systray_destroy_event(TrayWindow *traywin);
 void kde_update_icons();
 
 #endif

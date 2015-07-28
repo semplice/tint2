@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +10,8 @@
 
 void add_entry(char *key, char *value);
 void hex2gdk(char *hex, GdkColor *color);
-void get_action(char *event, GtkWidget *combo);
+void set_action(char *event, GtkWidget *combo);
+char *get_action(GtkWidget *combo);
 
 int config_has_panel_items;
 int config_has_battery;
@@ -24,6 +24,8 @@ int no_items_battery_enabled;
 
 void config_read_file(const char *path)
 {
+	background_create_new();
+
 	FILE *fp;
 	char line[512];
 	char *key, *value;
@@ -86,11 +88,11 @@ void config_write_color(FILE *fp, char *name, GdkColor color, int opacity)
 
 void config_write_backgrounds(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Backgrounds\n");
 
 	int index;
-	for (index = 0; ; index++) {
+	for (index = 1; ; index++) {
 		GtkTreePath *path;
 		GtkTreeIter iter;
 
@@ -117,7 +119,7 @@ void config_write_backgrounds(FILE *fp)
 						   bgColBorderWidth, &b,
 						   bgColCornerRadius, &r,
 						   -1);
-		fprintf(fp, "#%d\n", index + 1);
+		fprintf(fp, "# Background %d\n", index);
 		fprintf(fp, "rounded = %d\n", r);
 		fprintf(fp, "border_width = %d\n", b);
 		config_write_color(fp, "background_color", *fillColor, fillOpacity);
@@ -128,7 +130,7 @@ void config_write_backgrounds(FILE *fp)
 
 void config_write_panel(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Panel\n");
 	char *items = get_panel_items();
 	fprintf(fp, "panel_items = %s\n", items);
@@ -145,7 +147,7 @@ void config_write_panel(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(panel_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(panel_padding_y)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(panel_spacing)));
-	fprintf(fp, "panel_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(panel_background)));
+	fprintf(fp, "panel_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(panel_background)));
 	fprintf(fp, "wm_menu = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(panel_wm_menu)) ? 1 : 0);
 	fprintf(fp, "panel_dock = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(panel_dock)) ? 1 : 0);
 
@@ -181,7 +183,7 @@ void config_write_panel(FILE *fp)
 	if (gtk_combo_box_get_active(GTK_COMBO_BOX(panel_combo_layer)) == 0) {
 		fprintf(fp, "top");
 	} else if (gtk_combo_box_get_active(GTK_COMBO_BOX(panel_combo_layer)) == 1) {
-		fprintf(fp, "center");
+		fprintf(fp, "normal");
 	} else {
 		fprintf(fp, "bottom");
 	}
@@ -219,7 +221,7 @@ void config_write_panel(FILE *fp)
 
 void config_write_taskbar(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Taskbar\n");
 
 	fprintf(fp,
@@ -232,16 +234,17 @@ void config_write_taskbar(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_padding_y)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_spacing)));
-	fprintf(fp, "taskbar_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_inactive_background)));
-	fprintf(fp, "taskbar_active_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_active_background)));
+	fprintf(fp, "taskbar_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_inactive_background)));
+	fprintf(fp, "taskbar_active_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_active_background)));
 	fprintf(fp, "taskbar_name = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(taskbar_show_name)) ? 1 : 0);
 	fprintf(fp, "taskbar_hide_inactive_tasks = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(taskbar_hide_inactive_tasks)) ? 1 : 0);
 	fprintf(fp, "taskbar_hide_different_monitor = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(taskbar_hide_diff_monitor)) ? 1 : 0);
 	fprintf(fp,
-			"taskbar_name_padding = %d\n",
-			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_name_padding_x)));
-	fprintf(fp, "taskbar_name_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_name_inactive_background)));
-	fprintf(fp, "taskbar_name_active_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_name_active_background)));
+			"taskbar_name_padding = %d %d\n",
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_name_padding_x)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(taskbar_name_padding_y)));
+	fprintf(fp, "taskbar_name_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_name_inactive_background)));
+	fprintf(fp, "taskbar_name_active_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_name_active_background)));
 	fprintf(fp, "taskbar_name_font = %s\n", gtk_font_button_get_font_name(GTK_FONT_BUTTON(taskbar_name_font)));
 
 	GdkColor color;
@@ -260,12 +263,22 @@ void config_write_taskbar(FILE *fp)
 	fprintf(fp, "taskbar_distribute_size = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(taskbar_distribute_size)) ? 1 : 0);
 
 	fprintf(fp, "taskbar_sort_order = ");
-	if (gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_sort_order)) == 0) {
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_sort_order)) <= 0) {
 		fprintf(fp, "none");
 	} else if (gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_sort_order)) == 1) {
 		fprintf(fp, "title");
 	} else {
 		fprintf(fp, "center");
+	}
+	fprintf(fp, "\n");
+
+	fprintf(fp, "task_align = ");
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_alignment)) <= 0) {
+		fprintf(fp, "left");
+	} else if (gtk_combo_box_get_active(GTK_COMBO_BOX(taskbar_alignment)) == 1) {
+		fprintf(fp, "center");
+	} else {
+		fprintf(fp, "right");
 	}
 	fprintf(fp, "\n");
 
@@ -304,12 +317,12 @@ void config_write_task_background(FILE *fp, char *name, GtkWidget *task_backgrou
 {
 	char full_name[128];
 	sprintf(full_name, "task%s_background_id", name);
-	fprintf(fp, "%s = %d\n", full_name, 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(task_background)));
+	fprintf(fp, "%s = %d\n", full_name, gtk_combo_box_get_active(GTK_COMBO_BOX(task_background)));
 }
 
 void config_write_task(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Task\n");
 
 	fprintf(fp, "task_text = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(task_show_text)) ? 1 : 0);
@@ -321,9 +334,10 @@ void config_write_task(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_maximum_width)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_maximum_height)));
 	fprintf(fp,
-			"task_padding = %d %d\n",
+			"task_padding = %d %d %d\n",
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_padding_x)),
-			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_padding_y)));
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_padding_y)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(task_spacing)));
 	fprintf(fp, "task_font = %s\n", gtk_font_button_get_font_name(GTK_FONT_BUTTON(task_font)));
 	fprintf(fp, "task_tooltip = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(tooltip_task_show)) ? 1 : 0);
 
@@ -393,12 +407,19 @@ void config_write_task(FILE *fp)
 		config_write_task_background(fp, "_iconified", task_iconified_background);
 	}
 
+
+	fprintf(fp, "mouse_left = %s\n", get_action(task_mouse_left));
+	fprintf(fp, "mouse_middle = %s\n", get_action(task_mouse_middle));
+	fprintf(fp, "mouse_right = %s\n", get_action(task_mouse_right));
+	fprintf(fp, "mouse_scroll_up = %s\n", get_action(task_mouse_scroll_up));
+	fprintf(fp, "mouse_scroll_down = %s\n", get_action(task_mouse_scroll_down));
+
 	fprintf(fp, "\n");
 }
 
 void config_write_systray(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# System tray (notification area)\n");
 
 	fprintf(fp,
@@ -406,7 +427,7 @@ void config_write_systray(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(systray_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(systray_padding_y)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(systray_spacing)));
-	fprintf(fp, "systray_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(systray_background)));
+	fprintf(fp, "systray_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(systray_background)));
 
 	fprintf(fp, "systray_sort = ");
 	if (gtk_combo_box_get_active(GTK_COMBO_BOX(systray_icon_order)) == 0) {
@@ -428,7 +449,7 @@ void config_write_systray(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(systray_icon_brightness)));
 
 	fprintf(fp, "systray_monitor = ");
-	fprintf(fp, "%d", gtk_combo_box_get_active(GTK_COMBO_BOX(systray_monitor)));
+	fprintf(fp, "%d", MAX(1, 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(systray_monitor))));
 	fprintf(fp, "\n");
 
 	fprintf(fp, "\n");
@@ -436,7 +457,7 @@ void config_write_systray(FILE *fp)
 
 void config_write_launcher(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Launcher\n");
 
 	fprintf(fp,
@@ -444,14 +465,20 @@ void config_write_launcher(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_padding_y)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_spacing)));
-	fprintf(fp, "launcher_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(launcher_background)));
+	fprintf(fp, "launcher_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(launcher_background)));
 	fprintf(fp, "launcher_icon_size = %d\n", (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_icon_size)));
+	fprintf(fp,
+			"launcher_icon_asb = %d %d %d\n",
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_icon_opacity)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_icon_saturation)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_icon_brightness)));
 	gchar *icon_theme = get_current_icon_theme();
 	if (icon_theme && !g_str_equal(icon_theme, "")) {
 		fprintf(fp, "launcher_icon_theme = %s\n", icon_theme);
 		g_free(icon_theme);
 		icon_theme = NULL;
 	}
+	fprintf(fp, "launcher_icon_theme_override = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(launcher_icon_theme_override)) ? 1 : 0);
 	fprintf(fp, "startup_notifications = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(startup_notifications)) ? 1 : 0);
 	fprintf(fp, "launcher_tooltip = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(launcher_tooltip)) ? 1 : 0);
 
@@ -484,7 +511,7 @@ void config_write_launcher(FILE *fp)
 		g_strstrip(dir);
 		if (strlen(dir) > 0) {
 			char *contracted = contract_tilde(dir);
-			fprintf(fp, "launcher_item_app = %s\n", contracted);
+			fprintf(fp, "launcher_apps_dir = %s\n", contracted);
 			free(contracted);
 		}
 	}
@@ -495,7 +522,7 @@ void config_write_launcher(FILE *fp)
 
 void config_write_clock(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Clock\n");
 
 	fprintf(fp, "time1_format = %s\n", gtk_entry_get_text(GTK_ENTRY(clock_format_line1)));
@@ -515,8 +542,8 @@ void config_write_clock(FILE *fp)
 	fprintf(fp,
 			"clock_padding = %d %d\n",
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(clock_padding_x)),
-			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(clock_padding_x)));
-	fprintf(fp, "clock_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(clock_background)));
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(clock_padding_y)));
+	fprintf(fp, "clock_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(clock_background)));
 	fprintf(fp, "clock_tooltip = %s\n", gtk_entry_get_text(GTK_ENTRY(clock_format_tooltip)));
 	fprintf(fp, "clock_tooltip_timezone = %s\n", gtk_entry_get_text(GTK_ENTRY(clock_tmz_tooltip)));
 	fprintf(fp, "clock_lclick_command = %s\n", gtk_entry_get_text(GTK_ENTRY(clock_left_command)));
@@ -527,7 +554,7 @@ void config_write_clock(FILE *fp)
 
 void config_write_battery(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Battery\n");
 
 	fprintf(fp, "battery_low_status = %g\n", gtk_spin_button_get_value(GTK_SPIN_BUTTON(battery_alert_if_lower)));
@@ -544,7 +571,7 @@ void config_write_battery(FILE *fp)
 			"battery_padding = %d %d\n",
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(battery_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(battery_padding_y)));
-	fprintf(fp, "battery_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(battery_background)));
+	fprintf(fp, "battery_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(battery_background)));
 	fprintf(fp, "battery_hide = %d\n", (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(battery_hide_if_higher)));
 
 	fprintf(fp, "\n");
@@ -552,7 +579,7 @@ void config_write_battery(FILE *fp)
 
 void config_write_tooltip(FILE *fp)
 {
-	fprintf(fp, "#--------------------------------\n");
+	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Tooltip\n");
 
 	fprintf(fp, "tooltip_show_timeout = %g\n", gtk_spin_button_get_value(GTK_SPIN_BUTTON(tooltip_show_after)));
@@ -561,7 +588,7 @@ void config_write_tooltip(FILE *fp)
 			"tooltip_padding = %d %d\n",
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(tooltip_padding_x)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(tooltip_padding_y)));
-	fprintf(fp, "tooltip_background_id = %d\n", 1 + gtk_combo_box_get_active(GTK_COMBO_BOX(tooltip_background)));
+	fprintf(fp, "tooltip_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(tooltip_background)));
 
 	GdkColor color;
 	gtk_color_button_get_color(GTK_COLOR_BUTTON(tooltip_font_color), &color);
@@ -575,14 +602,40 @@ void config_write_tooltip(FILE *fp)
 	fprintf(fp, "\n");
 }
 
+// Similar to BSD checksum, except we skip the first line (metadata)
+unsigned short checksum_txt(FILE *f)
+{
+    unsigned int checksum = 0;
+	fseek(f, 0, SEEK_SET);
+
+	// Skip the first line
+	int c;
+	do {
+	  c = getc(f);
+	} while (c != EOF && c != '\n');
+
+	while ((c = getc(f)) != EOF) {
+		// Rotate right
+        checksum = (checksum >> 1) + ((checksum & 1) << 15);
+        // Update checksum
+		checksum += c;
+		// Truncate to 16 bits
+        checksum &= 0xffff;
+    }
+    return checksum;
+}
+
 void config_save_file(const char *path) {
 	printf("config_save_file : %s\n", path);
 
 	FILE *fp;
-	if ((fp = fopen(path, "wt")) == NULL)
+	if ((fp = fopen(path, "w+t")) == NULL)
 		return;
 
-	fprintf(fp, "#---- Generated by tint2conf ----\n");
+	unsigned short checksum = 0;
+	fprintf(fp, "#---- Generated by tint2conf %04x ----\n", checksum);
+	fprintf(fp, "# See https://gitlab.com/o9000/tint2/wikis/Configure for \n");
+	fprintf(fp, "# full documentation of the configuration options.\n");
 
 	config_write_backgrounds(fp);
 	config_write_panel(fp);
@@ -593,6 +646,11 @@ void config_save_file(const char *path) {
 	config_write_clock(fp);
 	config_write_battery(fp);
 	config_write_tooltip(fp);
+
+	checksum = checksum_txt(fp);
+	fseek(fp, 0, SEEK_SET);
+	fflush(fp);
+	fprintf(fp, "#---- Generated by tint2conf %04x ----\n", checksum);
 
 	fclose(fp);
 }
@@ -608,8 +666,16 @@ gboolean config_is_manual(const char *path)
 
 	result = TRUE;
 	if (fgets(line, sizeof(line), fp) != NULL) {
-		if (g_str_equal(line, "#---- Generated by tint2conf ----\n")) {
-			result = FALSE;
+		if (!g_regex_match_simple("^#---- Generated by tint2conf [0-9a-f][0-9a-f][0-9a-f][0-9a-f] ----\n$", line, 0, 0)) {
+			result = TRUE;
+		} else {
+			unsigned short checksum1 = checksum_txt(fp);
+			unsigned short checksum2 = 0;
+			if (sscanf(line, "#---- Generated by tint2conf %hxu", &checksum2) == 1) {
+				result = checksum1 != checksum2;
+			} else {
+				result = TRUE;
+			}
 		}
 	}
 	fclose(fp);
@@ -942,6 +1008,16 @@ void add_entry(char *key, char *value)
 		else
 			gtk_combo_box_set_active(GTK_COMBO_BOX(taskbar_sort_order), 0);
 	}
+	else if (strcmp(key, "task_align") == 0) {
+		if (strcmp(value, "left") == 0)
+			gtk_combo_box_set_active(GTK_COMBO_BOX(taskbar_alignment), 0);
+		else if (strcmp(value, "center") == 0)
+			gtk_combo_box_set_active(GTK_COMBO_BOX(taskbar_alignment), 1);
+		else if (strcmp(value, "right") == 0)
+			gtk_combo_box_set_active(GTK_COMBO_BOX(taskbar_alignment), 2);
+		else
+			gtk_combo_box_set_active(GTK_COMBO_BOX(taskbar_alignment), 0);
+	}
 	else if (strcmp(key, "taskbar_padding") == 0) {
 		extract_values(value, &value1, &value2, &value3);
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(taskbar_padding_x), atoi(value1));
@@ -971,6 +1047,7 @@ void add_entry(char *key, char *value)
 	else if (strcmp(key, "taskbar_name_padding") == 0) {
 		extract_values(value, &value1, &value2, &value3);
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(taskbar_name_padding_x), atoi(value1));
+		if (value2) gtk_spin_button_set_value(GTK_SPIN_BUTTON(taskbar_name_padding_y), atoi(value2));
 	}
 	else if (strcmp(key, "taskbar_name_background_id") == 0) {
 		int id = background_index_safe(atoi(value));
@@ -1034,7 +1111,9 @@ void add_entry(char *key, char *value)
 	else if (strcmp(key, "task_padding") == 0) {
 		extract_values(value, &value1, &value2, &value3);
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(task_padding_x), atoi(value1));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(task_spacing), atoi(value1));
 		if (value2) gtk_spin_button_set_value(GTK_SPIN_BUTTON(task_padding_y), atoi(value2));
+		if (value3) gtk_spin_button_set_value(GTK_SPIN_BUTTON(task_spacing), atoi(value3));
 	}
 	else if (strcmp(key, "task_font") == 0) {
 		gtk_font_button_set_font_name(GTK_FONT_BUTTON(task_font), value);
@@ -1172,20 +1251,18 @@ void add_entry(char *key, char *value)
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(systray_icon_size), atoi(value));
 	}
 	else if (strcmp(key, "systray_monitor") == 0) {
-		if (strcmp(value, "0") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 1);
-		else if (strcmp(value, "1") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 2);
+		if (strcmp(value, "1") == 0)
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 0);
 		else if (strcmp(value, "2") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 3);
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 1);
 		else if (strcmp(value, "3") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 4);
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 2);
 		else if (strcmp(value, "4") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 5);
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 3);
 		else if (strcmp(value, "5") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 6);
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 4);
 		else if (strcmp(value, "6") == 0)
-			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 7);
+			gtk_combo_box_set_active(GTK_COMBO_BOX(systray_monitor), 5);
 	}
 	else if (strcmp(key, "systray_icon_asb") == 0) {
 		extract_values(value, &value1, &value2, &value3);
@@ -1228,11 +1305,20 @@ void add_entry(char *key, char *value)
 	else if (strcmp(key, "launcher_icon_theme") == 0) {
 		set_current_icon_theme(value);
 	}
+	else if (strcmp(key, "launcher_icon_theme_override") == 0) {
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(launcher_icon_theme_override), atoi(value));
+	}
 	else if (strcmp(key, "launcher_tooltip") == 0) {
 		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(launcher_tooltip), atoi(value));
 	}
 	else if (strcmp(key, "startup_notifications") == 0) {
 		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(startup_notifications), atoi(value));
+	}
+	else if (strcmp(key, "launcher_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_opacity), atoi(value1));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_saturation), atoi(value2));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_brightness), atoi(value3));
 	}
 
 	/* Tooltip */
@@ -1267,19 +1353,19 @@ void add_entry(char *key, char *value)
 
 	/* Mouse actions */
 	else if (strcmp(key, "mouse_left") == 0) {
-		get_action(value, task_mouse_left);
+		set_action(value, task_mouse_left);
 	}
 	else if (strcmp(key, "mouse_middle") == 0) {
-		get_action(value, task_mouse_middle);
+		set_action(value, task_mouse_middle);
 	}
 	else if (strcmp(key, "mouse_right") == 0) {
-		get_action(value, task_mouse_right);
+		set_action(value, task_mouse_right);
 	}
 	else if (strcmp(key, "mouse_scroll_up") == 0) {
-		get_action(value, task_mouse_scroll_up);
+		set_action(value, task_mouse_scroll_up);
 	}
 	else if (strcmp(key, "mouse_scroll_down") == 0) {
-		get_action(value, task_mouse_scroll_down);
+		set_action(value, task_mouse_scroll_down);
 	}
 
 	if (value1) free(value1);
@@ -1297,7 +1383,7 @@ void hex2gdk(char *hex, GdkColor *color)
 	color->pixel = 0;
 }
 
-void get_action(char *event, GtkWidget *combo)
+void set_action(char *event, GtkWidget *combo)
 {
 	if (strcmp(event, "none") == 0)
 		gtk_combo_box_set_active(GTK_COMBO_BOX(combo), 0);
@@ -1321,4 +1407,31 @@ void get_action(char *event, GtkWidget *combo)
 		gtk_combo_box_set_active(GTK_COMBO_BOX(combo), 9);
 	else if (strcmp(event, "prev_task") == 0)
 		gtk_combo_box_set_active(GTK_COMBO_BOX(combo), 10);
+}
+
+char *get_action(GtkWidget *combo)
+{
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 0)
+		return "none";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 1)
+		return "close";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 2)
+		return "toggle";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 3)
+		return "iconify";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 4)
+		return "shade";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 5)
+		return "toggle_iconify";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 6)
+		return "maximize_restore";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 7)
+		return "desktop_left";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 8)
+		return "desktop_right";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 9)
+		return "next_task";
+	if (gtk_combo_box_get_active(GTK_COMBO_BOX(combo)) == 10)
+		return "prev_task";
+	return "none";
 }

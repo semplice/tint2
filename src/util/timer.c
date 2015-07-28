@@ -49,9 +49,7 @@ struct _timeout {
 
 void add_timeout_intern(int value_msec, int interval_msec, void(*_callback)(void*), void* arg, timeout* t);
 gint compare_timeouts(gconstpointer t1, gconstpointer t2);
-gint compare_timespecs(const struct timespec* t1, const struct timespec* t2);
 int timespec_subtract(struct timespec* result, struct timespec* x, struct timespec* y);
-struct timespec add_msec_to_timespec(struct timespec ts, int msec);
 
 
 int align_with_existing_timeouts(timeout* t);
@@ -395,8 +393,13 @@ void callback_multi_timeout(void* arg)
 		timeout* t = it->data;
 		if (++t->multi_timeout->current_count >= t->multi_timeout->count_to_expiration) {
 			t->_callback(t->arg);
-			t->multi_timeout->current_count = 0;
-			t->timeout_expires = add_msec_to_timespec(cur_time, t->interval_msec);
+			if (multi_timeouts && g_hash_table_lookup(multi_timeouts, t)) {
+				// Timer still exists
+				t->multi_timeout->current_count = 0;
+				t->timeout_expires = add_msec_to_timespec(cur_time, t->interval_msec);
+			} else {
+				return;
+			}
 		}
 		it = it->next;
 	}
@@ -446,4 +449,17 @@ void stop_multi_timeout(timeout* t)
 		free(t1);
 	}
 	free(mth);
+}
+
+double profiling_get_time_old_time = 0;
+double profiling_get_time()
+{
+	struct timespec cur_time;
+	clock_gettime(CLOCK_MONOTONIC, &cur_time);
+	double t = cur_time.tv_sec + cur_time.tv_nsec * 1.0e-9;
+	if (profiling_get_time_old_time == 0)
+		profiling_get_time_old_time = t;
+	double delta = t - profiling_get_time_old_time;
+	profiling_get_time_old_time = t;
+	return delta;
 }

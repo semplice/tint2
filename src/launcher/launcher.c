@@ -31,10 +31,11 @@
 #include <glib.h>
 #include <glib/gstdio.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #ifdef HAVE_RSVG
 #include <librsvg/rsvg.h>
-#include <librsvg/rsvg-cairo.h>
 #endif
 
 #include "window.h"
@@ -54,6 +55,7 @@ int launcher_saturation;
 int launcher_brightness;
 char *icon_theme_name_config;
 char *icon_theme_name_xsettings;
+int launcher_icon_theme_override;
 XSettingsClient *xsettings_client;
 int startup_notifications;
 
@@ -70,6 +72,7 @@ void default_launcher()
 	launcher_brightness = 0;
 	icon_theme_name_config = NULL;
 	icon_theme_name_xsettings = NULL;
+	launcher_icon_theme_override = 0;
 	xsettings_client = NULL;
 	startup_notifications = 0;
 }
@@ -149,8 +152,7 @@ void cleanup_launcher_theme(Launcher *launcher)
 	for (l = launcher->list_icons; l ; l = l->next) {
 		LauncherIcon *launcherIcon = (LauncherIcon*)l->data;
 		if (launcherIcon) {
-			free_icon(launcherIcon->icon_scaled);
-			free_icon(launcherIcon->icon_original);
+			free_icon(launcherIcon->image);
 			free(launcherIcon->icon_name);
 			free(launcherIcon->icon_path);
 			free(launcherIcon->cmd);
@@ -185,7 +187,7 @@ int resize_launcher(void *obj)
 	// Resize icons if necessary
 	for (l = launcher->list_icons; l ; l = l->next) {
 		LauncherIcon *launcherIcon = (LauncherIcon *)l->data;
-		if (launcherIcon->icon_size != icon_size || !launcherIcon->icon_original) {
+		if (launcherIcon->icon_size != icon_size || !launcherIcon->image) {
 			launcherIcon->icon_size = icon_size;
 			launcherIcon->area.width = launcherIcon->icon_size;
 			launcherIcon->area.height = launcherIcon->icon_size;
@@ -194,68 +196,69 @@ int resize_launcher(void *obj)
 			char *new_icon_path = get_icon_path(launcher->list_themes, launcherIcon->icon_name, launcherIcon->icon_size);
 			if (!new_icon_path) {
 				// Draw a blank icon
-				free_icon(launcherIcon->icon_original);
-				launcherIcon->icon_original = NULL;
-				free_icon(launcherIcon->icon_scaled);
-				launcherIcon->icon_scaled = NULL;
+				free_icon(launcherIcon->image);
+				launcherIcon->image = NULL;
 				continue;
 			}
-			if (launcherIcon->icon_path && strcmp(new_icon_path, launcherIcon->icon_path) == 0) {
-				// If it's the same file just rescale
-				free_icon(launcherIcon->icon_scaled);
-				launcherIcon->icon_scaled = scale_icon(launcherIcon->icon_original, icon_size);
-				free(new_icon_path);
-				fprintf(stderr, "launcher.c %d: Using icon %s\n", __LINE__, launcherIcon->icon_path);
-			} else {
-				// Free the old files
-				free_icon(launcherIcon->icon_original);
-				free_icon(launcherIcon->icon_scaled);
-				launcherIcon->icon_original = launcherIcon->icon_scaled = NULL;
-				// Load the new file and scale
+
+			// Free the old files
+			free_icon(launcherIcon->image);
+			launcherIcon->image = NULL;
+			// Load the new file and scale
+			launcherIcon->image = imlib_load_image_immediately(new_icon_path);
 #ifdef HAVE_RSVG
-				if (g_str_has_suffix(new_icon_path, ".svg")) {
+			if (!launcherIcon->image && g_str_has_suffix(new_icon_path, ".svg")) {
+				char suffix[128];
+				sprintf(suffix, "tmpicon-%d.png", getpid());
+				// We fork here because librsvg allocates memory like crazy
+				pid_t pid = fork();
+				if (pid == 0) {
+					// Child
 					GError* err = NULL;
 					RsvgHandle* svg = rsvg_handle_new_from_file(new_icon_path, &err);
 
 					if (err != NULL) {
 						fprintf(stderr, "Could not load svg image!: %s", err->message);
 						g_error_free(err);
-						launcherIcon->icon_original = NULL;
+						launcherIcon->image = NULL;
 					} else {
-						char suffix[128];
-						sprintf(suffix, "tmpicon-%d.png", getpid());
 						gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
 						GdkPixbuf *pixbuf = rsvg_handle_get_pixbuf(svg);
 						gdk_pixbuf_save(pixbuf, name, "png", NULL, NULL);
-						launcherIcon->icon_original = imlib_load_image_immediately_without_cache(name);
-						g_remove(name);
-						g_free(name);
-						g_object_unref(G_OBJECT(pixbuf));
-						g_object_unref(G_OBJECT(svg));
 					}
-				} else
-#endif
-				{
-					launcherIcon->icon_original = imlib_load_image_immediately(new_icon_path);
-				}
-				// On loading error, fallback to default
-				if (!launcherIcon->icon_original) {
-					free(new_icon_path);
-					new_icon_path = get_icon_path(launcher->list_themes, DEFAULT_ICON, launcherIcon->icon_size);
-					if (new_icon_path)
-						launcherIcon->icon_original = imlib_load_image_immediately(new_icon_path);
-				}
-
-				if (!launcherIcon->icon_original) {
-					// Loading default icon failed, draw a blank icon
-					free(new_icon_path);
+					exit(0);
 				} else {
-					// Loaded icon successfully
-					launcherIcon->icon_scaled = scale_icon(launcherIcon->icon_original, launcherIcon->icon_size);
-					free(launcherIcon->icon_path);
-					launcherIcon->icon_path = new_icon_path;
-					fprintf(stderr, "launcher.c %d: Using icon %s\n", __LINE__, launcherIcon->icon_path);
+					// Parent
+					waitpid(pid, 0, 0);
+					gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
+					launcherIcon->image = imlib_load_image_immediately_without_cache(name);
+					g_remove(name);
+					g_free(name);
 				}
+			} else
+#endif
+			{
+				launcherIcon->image = imlib_load_image_immediately(new_icon_path);
+			}
+			// On loading error, fallback to default
+			if (!launcherIcon->image) {
+				free(new_icon_path);
+				new_icon_path = get_icon_path(launcher->list_themes, DEFAULT_ICON, launcherIcon->icon_size);
+				if (new_icon_path)
+					launcherIcon->image = imlib_load_image_immediately(new_icon_path);
+			}
+
+			if (!launcherIcon->image) {
+				// Loading default icon failed, draw a blank icon
+				free(new_icon_path);
+			} else {
+				// Loaded icon successfully
+				Imlib_Image original = launcherIcon->image;
+				launcherIcon->image = scale_icon(launcherIcon->image, launcherIcon->icon_size);
+				free_icon(original);
+				free(launcherIcon->icon_path);
+				launcherIcon->icon_path = new_icon_path;
+				fprintf(stderr, "launcher.c %d: Using icon %s\n", __LINE__, launcherIcon->icon_path);
 			}
 		}
 	}
@@ -329,6 +332,7 @@ int resize_launcher(void *obj)
 			}
 		}
 	}
+
 	return 1;
 }
 
@@ -353,12 +357,15 @@ void draw_launcher_icon(void *obj, cairo_t *c)
 {
 	LauncherIcon *launcherIcon = (LauncherIcon*)obj;
 
-	Imlib_Image icon_scaled = launcherIcon->icon_scaled;
 	// Render
-	imlib_context_set_image (icon_scaled);
-	imlib_context_set_blend(1);
-	imlib_context_set_drawable(launcherIcon->area.pix);
-	imlib_render_image_on_drawable(0, 0);
+	imlib_context_set_image(launcherIcon->image);
+	if (server.real_transparency) {
+		render_image(launcherIcon->area.pix, 0, 0);
+	} else {
+		imlib_context_set_blend(1);
+		imlib_context_set_drawable(launcherIcon->area.pix);
+		imlib_render_image_on_drawable(0, 0);
+	}
 }
 
 Imlib_Image scale_icon(Imlib_Image original, int icon_size)
@@ -367,11 +374,14 @@ Imlib_Image scale_icon(Imlib_Image original, int icon_size)
 	if (original) {
 		imlib_context_set_image (original);
 		icon_scaled = imlib_create_cropped_scaled_image(0, 0, imlib_image_get_width(), imlib_image_get_height(), icon_size, icon_size);
+
 		imlib_context_set_image (icon_scaled);
 		imlib_image_set_has_alpha(1);
 		DATA32* data = imlib_image_get_data();
 		adjust_asb(data, icon_size, icon_size, launcher_alpha, (float)launcher_saturation/100, (float)launcher_brightness/100);
 		imlib_image_put_back_data(data);
+
+		imlib_context_set_image (icon_scaled);
 	} else {
 		icon_scaled = imlib_create_image(icon_size, icon_size);
 		imlib_context_set_image (icon_scaled);
@@ -394,7 +404,7 @@ void launcher_action(LauncherIcon *icon, XEvent* evt)
 	char *cmd = calloc(strlen(icon->cmd) + 10, 1);
 	sprintf(cmd, "(%s&)", icon->cmd);
 #if HAVE_SN
-	SnLauncherContext* ctx;
+	SnLauncherContext* ctx = 0;
 	Time time;
 	if (startup_notifications) {
 		ctx = sn_launcher_context_new(server.sn_dsp, server.screen);
@@ -487,9 +497,15 @@ void launcher_load_icons(Launcher *launcher)
 // Populates the list_themes list
 void launcher_load_themes(Launcher *launcher)
 {
-	launcher->list_themes = load_themes(icon_theme_name_config
-										? icon_theme_name_config
-										: icon_theme_name_xsettings
-										  ? icon_theme_name_xsettings
-										  : "hicolor");
+	launcher->list_themes = load_themes(launcher_icon_theme_override
+										? (icon_theme_name_config
+										   ? icon_theme_name_config
+										   : icon_theme_name_xsettings
+											 ? icon_theme_name_xsettings
+											 : "hicolor")
+										: (icon_theme_name_xsettings
+										   ? icon_theme_name_xsettings
+										   : icon_theme_name_config
+											 ? icon_theme_name_config
+											 : "hicolor"));
 }

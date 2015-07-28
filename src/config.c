@@ -41,6 +41,7 @@
 
 #include "common.h"
 #include "server.h"
+#include "strnatcmp.h"
 #include "panel.h"
 #include "task.h"
 #include "taskbar.h"
@@ -153,23 +154,48 @@ int config_get_monitor(char* monitor)
 	return -1;
 }
 
+static gint compare_strings(gconstpointer a, gconstpointer b)
+{
+   return strnatcasecmp((const char*)a, (const char*)b);
+}
+
 void load_launcher_app_dir(const char *path)
 {
-	GDir *d = g_dir_open(path, 0, NULL);
+    GList *subdirs = NULL;
+	GList *files = NULL;
+
+    GDir *d = g_dir_open(path, 0, NULL);
 	if (d) {
 		const gchar *name;
 		while ((name = g_dir_read_name(d))) {
 			gchar *file = g_build_filename(path, name, NULL);
-			if (!g_file_test(file, G_FILE_TEST_IS_DIR) &&
-				g_str_has_suffix(file, ".desktop")) {
-				panel_config.launcher.list_apps = g_slist_append(panel_config.launcher.list_apps, strdup(file));
+			if (!g_file_test(file, G_FILE_TEST_IS_DIR) && g_str_has_suffix(file, ".desktop")) {
+				files = g_list_append(files, file);
 			} else if (g_file_test(file, G_FILE_TEST_IS_DIR)) {
-				load_launcher_app_dir(file);
-			}
-			g_free(file);
+				subdirs = g_list_append(subdirs, file);
+			} else {
+                g_free(file);
+            }
 		}
 		g_dir_close(d);
 	}
+
+    subdirs = g_list_sort(subdirs, compare_strings);
+    GList *l;
+    for (l = subdirs; l; l = g_list_next(l)) {
+        gchar *dir = (gchar *)l->data;
+        load_launcher_app_dir(dir);
+        g_free(dir);
+    }
+    g_list_free(subdirs);
+
+    files = g_list_sort(files, compare_strings);
+    for (l = files; l; l = g_list_next(l)) {
+        gchar *file = (gchar *)l->data;
+        panel_config.launcher.list_apps = g_slist_append(panel_config.launcher.list_apps, strdup(file));
+        g_free(file);
+    }
+    g_list_free(files);
 }
 
 void add_entry (char *key, char *value)
@@ -474,6 +500,7 @@ void add_entry (char *key, char *value)
 	else if (strcmp (key, "taskbar_name_padding") == 0) {
 		extract_values(value, &value1, &value2, &value3);
 		panel_config.g_taskbar.area_name.paddingxlr = panel_config.g_taskbar.area_name.paddingx = atoi (value1);
+		if (value2) panel_config.g_taskbar.area_name.paddingy = atoi (value2);
 	}
 	else if (strcmp (key, "taskbar_name_background_id") == 0) {
 		int id = atoi (value);
@@ -515,6 +542,15 @@ void add_entry (char *key, char *value)
 			taskbar_sort_method = TASKBAR_SORT_TITLE;
 		} else {
 			taskbar_sort_method = TASKBAR_NOSORT;
+		}
+	}
+	else if (strcmp (key, "task_align") == 0) {
+		if (strcmp(value, "center") == 0) {
+			taskbar_alignment = ALIGN_CENTER;
+		} else if (strcmp(value, "right") == 0) {
+			taskbar_alignment = ALIGN_RIGHT;
+		} else {
+			taskbar_alignment = ALIGN_LEFT;
 		}
 	}
 
@@ -612,13 +648,13 @@ void add_entry (char *key, char *value)
 	}
 	else if (strcmp(key, "systray_sort") == 0) {
 		if (strcmp(value, "descending") == 0)
-			systray.sort = -1;
+			systray.sort = SYSTRAY_SORT_DESCENDING;
 		else if (strcmp(value, "ascending") == 0)
-			systray.sort = 1;
+			systray.sort = SYSTRAY_SORT_ASCENDING;
 		else if (strcmp(value, "left2right") == 0)
-			systray.sort = 2;
+			systray.sort = SYSTRAY_SORT_LEFT2RIGHT;
 		else  if (strcmp(value, "right2left") == 0)
-			systray.sort = 3;
+			systray.sort = SYSTRAY_SORT_RIGHT2LEFT;
 	}
 	else if (strcmp(key, "systray_icon_size") == 0) {
 		systray_max_icon_size = atoi(value);
@@ -662,6 +698,9 @@ void add_entry (char *key, char *value)
 		if (icon_theme_name_config)
 			free(icon_theme_name_config);
 		icon_theme_name_config = strdup(value);
+	}
+	else if (strcmp(key, "launcher_icon_theme_override") == 0) {
+		launcher_icon_theme_override = atoi(value);
 	}
 	else if (strcmp(key, "launcher_icon_asb") == 0) {
 		extract_values(value, &value1, &value2, &value3);
