@@ -35,6 +35,9 @@
 
 void copy_file(const char *pathSrc, const char *pathDest)
 {
+	if (g_str_equal(pathSrc, pathDest))
+		return;
+
 	FILE *fileSrc, *fileDest;
 	char buffer[100];
 	int  nb;
@@ -117,13 +120,13 @@ char *contract_tilde(char *s)
 	if (!home)
 		return strdup(s);
 
-	char *home_slash = calloc(strlen(home) + 1, 1);
+	char *home_slash = calloc(strlen(home) + 2, 1);
 	strcat(home_slash, home);
 	strcat(home_slash, "/");
 
 	if ((strcmp(s, home) == 0 ||
 		strstr(s, home_slash) == s)) {
-		char *result = calloc(strlen(s) - strlen(home) + 1, 1);
+		char *result = calloc(strlen(s) - strlen(home) + 2, 1);
 		strcat(result, "~");
 		strcat(result, s + strlen(home));
 		free(home_slash);
@@ -362,25 +365,67 @@ void createHeuristicMask(DATA32* data, int w, int h)
 	}
 }
 
-
-void render_image(Drawable d, int x, int y, int w, int h)
+int pixelEmpty(DATA32 argb)
 {
-	// in real_transparency mode imlib_render_image_on_drawable does not the right thing, because
-	// the operation is IMLIB_OP_COPY, but we would need IMLIB_OP_OVER (which does not exist)
-	// Therefore we have to do it with the XRender extension (i.e. copy what imlib is doing internally)
-	// But first we need to render the image onto itself with PictOpIn to adjust the colors to the alpha channel
-	Pixmap pmap_tmp = XCreatePixmap(server.dsp, server.root_win, w, h, 32);
-	imlib_context_set_drawable(pmap_tmp);
+
+	DATA32 a = (argb >> 24) & 0xff;
+	if (a == 0)
+		return 1;
+
+	DATA32 rgb = argb & 0xffFFff;
+	return rgb == 0;
+}
+
+int imageEmpty(DATA32* data, int w, int h)
+{
+	unsigned int x, y;
+
+	if (w > 0 && h > 0) {
+		x = w / 2;
+		y = h / 2;
+		if (!pixelEmpty(data[y * w + x])) {
+			//fprintf(stderr, "Non-empty pixel: [%u, %u] = %x\n", x, y, data[y * w + x]);
+			return 0;
+		}
+	}
+
+	for (y = 0; y < h; y++) {
+		for (x = 0; x < w; x++) {
+			if (!pixelEmpty(data[y * w + x])) {
+				//fprintf(stderr, "Non-empty pixel: [%u, %u] = %x\n", x, y, data[y * w + x]);
+				return 0;
+			}
+		}
+	}
+
+	//fprintf(stderr, "All pixels are empty\n");
+	return 1;
+}
+
+void render_image(Drawable d, int x, int y)
+{
+	int w = imlib_image_get_width(), h = imlib_image_get_height();
+
+	Pixmap pixmap = XCreatePixmap(server.dsp, server.root_win, w, h, 32);
+	imlib_context_set_drawable(pixmap);
 	imlib_context_set_blend(0);
 	imlib_render_image_on_drawable(0, 0);
-	Picture pict_image = XRenderCreatePicture(server.dsp, pmap_tmp, XRenderFindStandardFormat(server.dsp, PictStandardARGB32), 0, 0);
+
+	Pixmap mask = XCreatePixmap(server.dsp, server.root_win, w, h, 32);
+	imlib_context_set_drawable(mask);
+	imlib_context_set_blend(0);
+	imlib_render_image_on_drawable(0, 0);
+
+	Picture pict = XRenderCreatePicture(server.dsp, pixmap, XRenderFindStandardFormat(server.dsp, PictStandardARGB32), 0, 0);
 	Picture pict_drawable = XRenderCreatePicture(server.dsp, d, XRenderFindVisualFormat(server.dsp, server.visual), 0, 0);
-	XRenderComposite(server.dsp, PictOpIn, pict_image, None, pict_image, 0, 0, 0, 0, 0, 0, w, h);
-	XRenderComposite(server.dsp, PictOpOver, pict_image, None, pict_drawable, 0, 0, 0, 0, x, y, w, h);
-	imlib_context_set_blend(1);
-	XFreePixmap(server.dsp, pmap_tmp);
-	XRenderFreePicture(server.dsp, pict_image);
+	Picture pict_mask = XRenderCreatePicture(server.dsp, mask, XRenderFindStandardFormat(server.dsp, PictStandardARGB32), 0, 0);
+	XRenderComposite(server.dsp, PictOpOver, pict, pict_mask, pict_drawable, 0, 0, 0, 0, x, y, w, h);
+
+	XRenderFreePicture(server.dsp, pict_mask);
 	XRenderFreePicture(server.dsp, pict_drawable);
+	XRenderFreePicture(server.dsp, pict);
+	XFreePixmap(server.dsp, mask);
+	XFreePixmap(server.dsp, pixmap);
 }
 
 void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, int font_shadow)

@@ -204,6 +204,8 @@ void init_panel()
 			}
 			if (panel_items_order[k] == 'C')
 				init_clock_panel(p);
+			if (panel_items_order[k] == 'F' && !strstr(panel_items_order, "T"))
+				init_freespace_panel(p);
 		}
 		set_panel_items_order(p);
 
@@ -322,13 +324,13 @@ void init_panel_size_and_position(Panel *panel)
 
 int resize_panel(void *obj)
 {
-	resize_by_layout(obj, 0);
+	Panel *panel = (Panel*)obj;
+	resize_by_layout(panel, 0);
 	
 	//printf("resize_panel\n");
 	if (panel_mode != MULTI_DESKTOP && taskbar_enabled) {
 		// propagate width/height on hidden taskbar
 		int i, width, height;
-		Panel *panel = (Panel*)obj;
 		width = panel->taskbar[server.desktop].area.width;
 		height = panel->taskbar[server.desktop].area.height;
 		for (i=0 ; i < panel->nb_desktop ; i++) {
@@ -339,7 +341,6 @@ int resize_panel(void *obj)
 	}
 	if (panel_mode == MULTI_DESKTOP && taskbar_enabled && taskbar_distribute_size) {
 		// Distribute the available space between taskbars
-		Panel *panel = (Panel*)obj;
 
 		// Compute the total available size, and the total size requested by the taskbars
 		int total_size = 0;
@@ -354,7 +355,7 @@ int resize_panel(void *obj)
 			}
 
 			Taskbar *taskbar = &panel->taskbar[i];
-			GSList *l;
+			GList *l;
 			for (l = taskbar->area.list; l; l = l->next) {
 				Area *child = l->data;
 				if (!child->on_screen)
@@ -389,7 +390,7 @@ int resize_panel(void *obj)
 
 				int requested_size = (2 * taskbar->area.bg->border.width) + (2 * taskbar->area.paddingxlr);
 				int items = 0;
-				GSList *l = taskbar->area.list;
+				GList *l = taskbar->area.list;
 				if (taskbarname_enabled)
 					l = l->next;
 				for (; l; l = l->next) {
@@ -418,6 +419,8 @@ int resize_panel(void *obj)
 			}
 		}
 	}
+	if (panel->freespace.area.on_screen)
+		resize_freespace(&panel->freespace);
 	return 0;
 }
 
@@ -482,29 +485,31 @@ void set_panel_items_order(Panel *p)
 	int k, j;
 	
 	if (p->area.list) {
-		g_slist_free(p->area.list);
+		g_list_free(p->area.list);
 		p->area.list = 0;
 	}
 
 	for (k=0 ; k < strlen(panel_items_order) ; k++) {
 		if (panel_items_order[k] == 'L') {
-			p->area.list = g_slist_append(p->area.list, &p->launcher);
+			p->area.list = g_list_append(p->area.list, &p->launcher);
 			p->launcher.area.resize = 1;
 		}
 		if (panel_items_order[k] == 'T') {
 			for (j=0 ; j < p->nb_desktop ; j++)
-				p->area.list = g_slist_append(p->area.list, &p->taskbar[j]);
+				p->area.list = g_list_append(p->area.list, &p->taskbar[j]);
 		}
 #ifdef ENABLE_BATTERY
 		if (panel_items_order[k] == 'B') 
-			p->area.list = g_slist_append(p->area.list, &p->battery);
+			p->area.list = g_list_append(p->area.list, &p->battery);
 #endif
 		int i = p - panel1;
 		if (panel_items_order[k] == 'S' && systray_on_monitor(i, nb_panel)) {
-			p->area.list = g_slist_append(p->area.list, &systray);
+			p->area.list = g_list_append(p->area.list, &systray);
 		}
 		if (panel_items_order[k] == 'C')
-			p->area.list = g_slist_append(p->area.list, &p->clock);
+			p->area.list = g_list_append(p->area.list, &p->clock);
+		if (panel_items_order[k] == 'F')
+			p->area.list = g_list_append(p->area.list, &p->freespace);
 	}
 	init_rendering(&p->area, 0);
 }
@@ -524,7 +529,9 @@ void set_panel_properties(Panel *p)
 	}
 
 	// Dock
-	long val = panel_dock ? server.atom._NET_WM_WINDOW_TYPE_DOCK : server.atom._NET_WM_WINDOW_TYPE_SPLASH;
+	long val = (!panel_dock && panel_layer == NORMAL_LAYER)
+			   ? server.atom._NET_WM_WINDOW_TYPE_SPLASH
+			   : server.atom._NET_WM_WINDOW_TYPE_DOCK;
 	XChangeProperty (server.dsp, p->main_win, server.atom._NET_WM_WINDOW_TYPE, XA_ATOM, 32, PropModeReplace, (unsigned char *) &val, 1);
 
 	val = ALLDESKTOP;
@@ -542,7 +549,7 @@ void set_panel_properties(Panel *p)
 	memset(&wmhints, 0, sizeof(wmhints));
 	if (panel_dock) {
 		// Necessary for placing the panel into the dock on Openbox and Fluxbox.
-		// See https://code.google.com/p/tint2/issues/detail?id=465
+		// See https://gitlab.com/o9000/tint2/issues/465
 		wmhints.icon_window = wmhints.window_group = p->main_win;
 		wmhints.flags = StateHint | IconWindowHint;
 		wmhints.initial_state = WithdrawnState;
@@ -627,7 +634,7 @@ void set_panel_background(Panel *p)
 	}
 
 	// redraw panel's object
-	GSList *l0;
+	GList *l0;
 	Area *a;
 	for (l0 = p->area.list; l0 ; l0 = l0->next) {
 		a = l0->data;
@@ -693,7 +700,7 @@ Taskbar *click_taskbar (Panel *panel, int x, int y)
 
 Task *click_task (Panel *panel, int x, int y)
 {
-	GSList *l0;
+	GList *l0;
 	Taskbar *tskbar;
 
 	if ( (tskbar = click_taskbar(panel, x, y)) ) {
@@ -795,7 +802,7 @@ Area* click_area(Panel *panel, int x, int y)
 	Area* new_result = result;
 	do {
 		result = new_result;
-		GSList* it = result->list;
+		GList* it = result->list;
 		while (it) {
 			Area* a = it->data;
 			if (a->on_screen && x >= a->posx && x <= (a->posx + a->width)

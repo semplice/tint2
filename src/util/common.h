@@ -6,12 +6,17 @@
 #ifndef COMMON_H
 #define COMMON_H
 
-
 #define WM_CLASS_TINT   "panel"
 
 #include <Imlib2.h>
 #include <pango/pangocairo.h>
 #include "area.h"
+
+#define GREEN  "\033[1;32m"
+#define YELLOW "\033[1;33m"
+#define RED    "\033[31m"
+#define BLUE   "\033[1;34m"
+#define RESET  "\033[0m"
 
 /*
 void fxfree(void** ptr){
@@ -63,8 +68,9 @@ void extract_values (const char *value, char **value1, char **value2, char **val
 // alpha from 0 to 100, satur from 0 to 1, bright from 0 to 1.
 void adjust_asb(DATA32 *data, int w, int h, int alpha, float satur, float bright);
 void createHeuristicMask(DATA32* data, int w, int h);
+int imageEmpty(DATA32* data, int w, int h);
 
-void render_image(Drawable d, int x, int y, int w, int h);
+void render_image(Drawable d, int x, int y);
 
 void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, int font_shadow);
 

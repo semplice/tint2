@@ -48,15 +48,15 @@ extern GtkWidget *panel_background;
 // taskbar
 extern GtkWidget *taskbar_show_desktop, *taskbar_show_name, *taskbar_padding_x, *taskbar_padding_y, *taskbar_spacing;
 extern GtkWidget *taskbar_hide_inactive_tasks, *taskbar_hide_diff_monitor;
-extern GtkWidget *taskbar_name_padding_x, *taskbar_name_inactive_color, *taskbar_name_active_color, *taskbar_name_font;
+extern GtkWidget *taskbar_name_padding_x, *taskbar_name_padding_y, *taskbar_name_inactive_color, *taskbar_name_active_color, *taskbar_name_font;
 extern GtkWidget *taskbar_active_background, *taskbar_inactive_background;
 extern GtkWidget *taskbar_name_active_background, *taskbar_name_inactive_background;
-extern GtkWidget *taskbar_distribute_size, *taskbar_sort_order;
+extern GtkWidget *taskbar_distribute_size, *taskbar_sort_order, *taskbar_alignment;
 
 // task
 extern GtkWidget *task_mouse_left, *task_mouse_middle, *task_mouse_right, *task_mouse_scroll_up, *task_mouse_scroll_down;
 extern GtkWidget *task_show_icon, *task_show_text, *task_align_center, *font_shadow;
-extern GtkWidget *task_maximum_width, *task_maximum_height, *task_padding_x, *task_padding_y, *task_font;
+extern GtkWidget *task_maximum_width, *task_maximum_height, *task_padding_x, *task_padding_y, *task_spacing, *task_font;
 extern GtkWidget *task_default_color, *task_default_color_set,
 		  *task_default_icon_opacity, *task_default_icon_osb_set,
 		  *task_default_icon_saturation,
@@ -121,11 +121,13 @@ extern GtkWidget *launcher_apps_view, *all_apps_view;
 extern GtkWidget *launcher_apps_dirs;
 
 extern GtkWidget *launcher_icon_size, *launcher_icon_theme, *launcher_padding_x, *launcher_padding_y, *launcher_spacing;
+extern GtkWidget *launcher_icon_opacity, *launcher_icon_saturation, *launcher_icon_brightness;
 extern GtkWidget *margin_x, *margin_y;
 extern GtkWidget *launcher_background;
 extern GtkWidget *startup_notifications;
 extern IconThemeWrapper *icon_theme;
 extern GtkWidget *launcher_tooltip;
+extern GtkWidget *launcher_icon_theme_override;
 
 void load_desktop_file(const char *file, gboolean selected);
 void set_current_icon_theme(const char *theme);

@@ -50,6 +50,9 @@ Task *add_task (Window win)
 	if (!win) return 0;
 	if (window_is_hidden(win)) return 0;
 
+	XSelectInput(server.dsp, win, PropertyChangeMask|StructureNotifyMask);
+	XFlush(server.dsp);
+
 	int monitor;
 	if (nb_panel > 1) {
 		monitor = window_get_monitor (win);
@@ -75,8 +78,7 @@ Task *add_task (Window win)
 	get_title(&new_tsk);
 	get_icon(&new_tsk);
 
-	//printf("task %s : desktop %d, monitor %d\n", new_tsk->title, desktop, monitor);
-	XSelectInput (server.dsp, new_tsk.win, PropertyChangeMask|StructureNotifyMask);
+	//printf("new task %s win %u: desktop %d, monitor %d\n", new_tsk.title, win, new_tsk.desktop, monitor);
 
 	GPtrArray* task_group = g_ptr_array_new();
 	Taskbar *tskbar;
@@ -109,7 +111,7 @@ Task *add_task (Window win)
 		}
 		new_tsk2->icon_width = new_tsk.icon_width;
 		new_tsk2->icon_height = new_tsk.icon_height;
-		tskbar->area.list = g_slist_append(tskbar->area.list, new_tsk2);
+		tskbar->area.list = g_list_append(tskbar->area.list, new_tsk2);
 		tskbar->area.resize = 1;
 		g_ptr_array_add(task_group, new_tsk2);
 		//printf("add_task panel %d, desktop %d, task %s\n", i, j, new_tsk2->title);
@@ -167,7 +169,7 @@ void remove_task (Task *tsk)
 	for (i=0; i<task_group->len; ++i) {
 		tsk2 = g_ptr_array_index(task_group, i);
 		tskbar = tsk2->area.parent;
-		tskbar->area.list = g_slist_remove(tskbar->area.list, tsk2);
+		tskbar->area.list = g_list_remove(tskbar->area.list, tsk2);
 		tskbar->area.resize = 1;
 		if (tsk2 == task_active) task_active = 0;
 		if (tsk2 == task_drag) task_drag = 0;
@@ -193,18 +195,14 @@ int get_title(Task *tsk)
 		name = server_get_property (tsk->win, server.atom._NET_WM_NAME, server.atom.UTF8_STRING, 0);
 		if (!name || !strlen(name)) {
 			name = server_get_property (tsk->win, server.atom.WM_NAME, XA_STRING, 0);
-			if (!name || !strlen(name)) {
-				name = calloc(10, 1);
-				strcpy(name, "Untitled");
-			}
 		}
 	}
 
-	// add space before title
-	title = calloc(strlen(name)+2, 1);
-	if (panel->g_task.icon) strcpy(title, " ");
-	else title[0] = 0;
-	strcat(title, name);
+	if (name && strlen(name)) {
+		title = strdup(name);
+	} else {
+		title = strdup("Untitled");
+	}
 	if (name) XFree (name);
 	
 	if (tsk->title) {
@@ -352,9 +350,13 @@ void draw_task_icon (Task *tsk, int text_width)
 
 	// Render
 	imlib_context_set_image (tsk->icon[tsk->current_state]);
-	imlib_context_set_blend(1);
-	imlib_context_set_drawable(tsk->area.pix);
-	imlib_render_image_on_drawable(pos_x, panel->g_task.icon_posy);
+	if (server.real_transparency) {
+		render_image(tsk->area.pix, pos_x, panel->g_task.icon_posy);
+	} else {
+		imlib_context_set_blend(1);
+		imlib_context_set_drawable(tsk->area.pix);
+		imlib_render_image_on_drawable(pos_x, panel->g_task.icon_posy);
+	}
 }
 
 
@@ -378,7 +380,7 @@ void draw_task (void *obj, cairo_t *c)
 		// pango use U+22EF or U+2026
 		pango_layout_set_width(layout, ((Taskbar*)tsk->area.parent)->text_width * PANGO_SCALE);
 		pango_layout_set_height(layout, panel->g_task.text_height * PANGO_SCALE);
-		pango_layout_set_wrap(layout, PANGO_WRAP_CHAR);
+		pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
 		pango_layout_set_ellipsize (layout, PANGO_ELLIPSIZE_END);
 
 		/* Center text */
@@ -422,15 +424,13 @@ Task *find_active_task(Task *current_task, Task *active_task)
 	if (active_task == NULL)
 		return current_task;
 
-	GSList *l0;
-	Task *tsk;
 	Taskbar* tskbar = current_task->area.parent;
 
-	l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.list;
 	if (taskbarname_enabled)
 		l0 = l0->next;
 	for (; l0 ; l0 = l0->next) {
-		tsk = l0->data;
+		Task *tsk = l0->data;
 		if (tsk->win == active_task->win)
 			return tsk;
 	}
@@ -443,15 +443,13 @@ Task *next_task(Task *tsk)
 	if (tsk == 0)
 		return 0;
 
-	GSList *l0, *lfirst_tsk;
-	Task *tsk1;
 	Taskbar* tskbar = tsk->area.parent;
 
-	l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.list;
 	if (taskbarname_enabled) l0 = l0->next;
-	lfirst_tsk = l0;
+	GList *lfirst_tsk = l0;
 	for (; l0 ; l0 = l0->next) {
-		tsk1 = l0->data;
+		Task *tsk1 = l0->data;
 		if (tsk1 == tsk) {
 			if (l0->next == 0) l0 = lfirst_tsk;
 			else l0 = l0->next;
@@ -467,19 +465,18 @@ Task *prev_task(Task *tsk)
 	if (tsk == 0)
 		return 0;
 
-	GSList *l0, *lfirst_tsk;
 	Task *tsk1, *tsk2;
 	Taskbar* tskbar = tsk->area.parent;
 
 	tsk2 = 0;
-	l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.list;
 	if (taskbarname_enabled) l0 = l0->next;
-	lfirst_tsk = l0;
+	GList *lfirst_tsk = l0;
 	for (; l0 ; l0 = l0->next) {
 		tsk1 = l0->data;
 		if (tsk1 == tsk) {
 			if (l0 == lfirst_tsk) {
-				l0 = g_slist_last ( l0 );
+				l0 = g_list_last ( l0 );
 				tsk2 = l0->data;
 			}
 			return tsk2;

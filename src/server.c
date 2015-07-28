@@ -98,6 +98,7 @@ void server_init_atoms ()
 	server.atom._NET_SYSTEM_TRAY_ORIENTATION = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_ORIENTATION", False);
 	server.atom._XEMBED = XInternAtom(server.dsp, "_XEMBED", False);
 	server.atom._XEMBED_INFO = XInternAtom(server.dsp, "_XEMBED_INFO", False);
+	server.atom._NET_WM_PID = XInternAtom(server.dsp, "_NET_WM_PID", True);
 
 	// drag 'n' drop
 	server.atom.XdndAware = XInternAtom(server.dsp, "XdndAware", False);
@@ -283,7 +284,7 @@ void get_monitors()
 		if (res && res->ncrtc >= nbmonitor) {
 			// use xrandr to identify monitors (does not work with proprietery nvidia drivers)
 
-			// Workaround for issue https://code.google.com/p/tint2/issues/detail?id=353
+			// Workaround for issue https://gitlab.com/o9000/tint2/issues/353
 			// on some recent configs, XRRGetScreenResourcesCurrent returns a fantom monitor at last position
 			{
 				int i = res->ncrtc - 1;
