@@ -1,6 +1,8 @@
 tint2 (0.12-1) UNRELEASED; urgency=medium
 
   * New upstream release (Closes: #793797)
+   - Drop 04-freespace.patch (applied upstream)
+   - Drop 05-task-align.patch (needs rework)
 
  -- Sebastian Reichel <sre@debian.org>  Sat, 25 Apr 2015 20:33:14 +0200
 

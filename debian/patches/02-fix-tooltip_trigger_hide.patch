@@ -8,11 +8,9 @@ Author: Sebastian Reichel <sre@debian.org>
 Bug-Debian: 748171
 Last-Update: 2014-06-01
 
-Index: tint2/src/tooltip/tooltip.c
-===================================================================
---- tint2.orig/src/tooltip/tooltip.c
-+++ tint2/src/tooltip/tooltip.c
-@@ -259,7 +259,7 @@ void tooltip_update()
+--- a/src/tooltip/tooltip.c
++++ b/src/tooltip/tooltip.c
+@@ -259,7 +259,7 @@
  }
  
  

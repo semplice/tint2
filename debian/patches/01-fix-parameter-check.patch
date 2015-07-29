@@ -5,11 +5,9 @@ Author: Sebastian Reichel <sre@debian.org>
 Bug-Debian: 716390
 Last-Update: 2014-06-01
 
-Index: tint2/src/tint.c
-===================================================================
---- tint2.orig/src/tint.c
-+++ tint2/src/tint.c
-@@ -89,16 +89,16 @@ void init (int argc, char *argv[])
+--- a/src/tint.c
++++ b/src/tint.c
+@@ -127,16 +127,16 @@
  			printf("Usage: tint2 [-c] <config_file>\n");
  			exit(0);
  		}
