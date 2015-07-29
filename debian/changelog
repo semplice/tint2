@@ -1,10 +1,10 @@
-tint2 (0.12-1) UNRELEASED; urgency=medium
+tint2 (0.12-1) unstable; urgency=medium
 
   * New upstream release (Closes: #793797)
    - Drop 04-freespace.patch (applied upstream)
    - Drop 05-task-align.patch (needs rework)
 
- -- Sebastian Reichel <sre@debian.org>  Sat, 25 Apr 2015 20:33:14 +0200
+ -- Sebastian Reichel <sre@debian.org>  Wed, 29 Jul 2015 18:53:03 +0200
 
 tint2 (0.11+svn20121014-3) unstable; urgency=low
 
