@@ -4,6 +4,7 @@ Description: Fix argv check
 Author: Sebastian Reichel <sre@debian.org>
 Bug-Debian: 716390
 Last-Update: 2014-06-01
+Applied-Upstream: yes
 
 --- a/src/tint.c
 +++ b/src/tint.c

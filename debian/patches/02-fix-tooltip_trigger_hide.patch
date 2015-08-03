@@ -7,6 +7,7 @@ Description: Fix tooltip_trigger_hide function declaration
 Author: Sebastian Reichel <sre@debian.org>
 Bug-Debian: 748171
 Last-Update: 2014-06-01
+Applied-Upstream: yes
 
 --- a/src/tooltip/tooltip.c
 +++ b/src/tooltip/tooltip.c
