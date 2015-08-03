@@ -1,15 +1,13 @@
-### New stable release: 0.12
+### New stable release: 0.12.1
 Changes: https://gitlab.com/o9000/tint2/blob/master/ChangeLog
 
 Documentation: https://gitlab.com/o9000/tint2/wikis/home
 
 Try it out with (see also [dependencies](https://gitlab.com/o9000/tint2/wikis/Install#dependencies)):
 ```
-mkdir tint2-0.12
-cd tint2-0.12
-wget 'https://gitlab.com/o9000/tint2/repository/archive.tar.gz?ref=v0.12' --output-document tint2-0.12.tar.gz
-tar -xzf tint2-0.12.tar.gz
-cd tint2.git
+git clone https://gitlab.com/o9000/tint2.git
+cd tint2
+git checkout v0.12.1
 mkdir build
 cd build
 cmake ..
@@ -24,6 +22,9 @@ make install
 ```
 
 Please report any problems to https://gitlab.com/o9000/tint2/issues. Your feedback is much appreciated.
+
+Known issues:
+* [System tray resize loop with GTK applications](https://gitlab.com/o9000/tint2/issues/509), see also the [GTK bug report](https://bugzilla.gnome.org/show_bug.cgi?id=710375). Fix landed in 0.12.1, if there are still problems please let me know.
 
 P.S. GitLab is now the official location of the tint2 project, migrated from Google Code, which is shutting down. In case you are wondering why not GitHub, BitBucket etc., we chose GitLab because it is open source, it is mature and works well, looks cool and has a very nice team.
 
@@ -70,8 +71,7 @@ tint2 is a simple panel/taskbar made for modern X window managers. It was specif
   * Old project location (inactive): https://code.google.com/p/tint2
 
 ### Releases
-  * Latest stable release: tint2 0.11 (June 2010)
-  * Next release: planned for mid 2015
+  * Latest stable release: tint2 0.12 (July 2015)
 
 ### Screenshots
 ![screenshot](https://gitlab.com/o9000/tint2/wikis/screenshot.png)

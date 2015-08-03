@@ -350,13 +350,7 @@ void draw_task_icon (Task *tsk, int text_width)
 
 	// Render
 	imlib_context_set_image (tsk->icon[tsk->current_state]);
-	if (server.real_transparency) {
-		render_image(tsk->area.pix, pos_x, panel->g_task.icon_posy);
-	} else {
-		imlib_context_set_blend(1);
-		imlib_context_set_drawable(tsk->area.pix);
-		imlib_render_image_on_drawable(pos_x, panel->g_task.icon_posy);
-	}
+	render_image(tsk->area.pix, pos_x, panel->g_task.icon_posy);
 }
 
 
@@ -527,9 +521,14 @@ void set_task_state(Task *tsk, int state)
 					tsk1->area.redraw = 1;
 				if (state == TASK_ACTIVE && g_slist_find(urgent_list, tsk1))
 					del_urgent(tsk1);
-				// Show only the active task
 				int hide = 0;
+				Taskbar *taskbar = (Taskbar *)tsk1->area.parent;
+				if (tsk->desktop == ALLDESKTOP && server.desktop != taskbar->desktop) {
+					// Hide ALLDESKTOP task on non-current desktop
+					hide = 1;
+				}
 				if (hide_inactive_tasks) {
+					// Show only the active task
 					if (state != TASK_ACTIVE) {
 						hide = 1;
 					}

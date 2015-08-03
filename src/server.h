@@ -71,6 +71,8 @@ typedef struct Global_atom
 	Atom MANAGER;
 	Atom _NET_SYSTEM_TRAY_MESSAGE_DATA;
 	Atom _NET_SYSTEM_TRAY_ORIENTATION;
+	Atom _NET_SYSTEM_TRAY_ICON_SIZE;
+	Atom _NET_SYSTEM_TRAY_PADDING;
 	Atom _XEMBED;
 	Atom _XEMBED_INFO;
 	Atom _NET_WM_PID;
@@ -151,6 +153,7 @@ void get_root_pixmap();
 
 // detect monitors and desktops
 void get_monitors();
+void print_monitors();
 void get_desktops();
 int server_get_number_of_desktops();
 

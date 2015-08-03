@@ -258,6 +258,13 @@ void add_entry (char *key, char *value)
 		new_config_file = 1;
 		panel_items_order = strdup(value);
 		int j;
+		systray_enabled = 0;
+		launcher_enabled = 0;
+#ifdef ENABLE_BATTERY
+		battery_enabled = 0;
+#endif
+		clock_enabled = 0;
+		taskbar_enabled = 0;
 		for (j=0 ; j < strlen(panel_items_order) ; j++) {
 			if (panel_items_order[j] == 'L')
 				launcher_enabled = 1;
@@ -349,6 +356,36 @@ void add_entry (char *key, char *value)
 		battery_low_status = atoi(value);
 		if(battery_low_status < 0 || battery_low_status > 100)
 			battery_low_status = 0;
+#endif
+	}
+	else if (strcmp(key, "battery_lclick_command") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			battery_lclick_command = strdup(value);
+#endif
+	}
+	else if (strcmp(key, "battery_mclick_command") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			battery_mclick_command = strdup(value);
+#endif
+	}
+	else if (strcmp(key, "battery_rclick_command") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			battery_rclick_command = strdup(value);
+#endif
+	}
+	else if (strcmp(key, "battery_uwheel_command") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			battery_uwheel_command = strdup(value);
+#endif
+	}
+	else if (strcmp(key, "battery_dwheel_command") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			battery_dwheel_command = strdup(value);
 #endif
 	}
 	else if (strcmp (key, "battery_low_cmd") == 0) {
@@ -463,9 +500,21 @@ void add_entry (char *key, char *value)
 		if (strlen(value) > 0)
 			clock_lclick_command = strdup(value);
 	}
+	else if (strcmp(key, "clock_mclick_command") == 0) {
+		if (strlen(value) > 0)
+			clock_mclick_command = strdup(value);
+	}
 	else if (strcmp(key, "clock_rclick_command") == 0) {
 		if (strlen(value) > 0)
 			clock_rclick_command = strdup(value);
+	}
+	else if (strcmp(key, "clock_uwheel_command") == 0) {
+		if (strlen(value) > 0)
+			clock_uwheel_command = strdup(value);
+	}
+	else if (strcmp(key, "clock_dwheel_command") == 0) {
+		if (strlen(value) > 0)
+			clock_dwheel_command = strdup(value);
 	}
 
 	/* Taskbar */
