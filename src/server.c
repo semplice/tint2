@@ -96,6 +96,8 @@ void server_init_atoms ()
 	server.atom.MANAGER = XInternAtom(server.dsp, "MANAGER", False);
 	server.atom._NET_SYSTEM_TRAY_MESSAGE_DATA = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_MESSAGE_DATA", False);
 	server.atom._NET_SYSTEM_TRAY_ORIENTATION = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_ORIENTATION", False);
+	server.atom._NET_SYSTEM_TRAY_ICON_SIZE = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_ICON_SIZE", False);
+	server.atom._NET_SYSTEM_TRAY_PADDING = XInternAtom(server.dsp, "_NET_SYSTEM_TRAY_PADDING", False);
 	server.atom._XEMBED = XInternAtom(server.dsp, "_XEMBED", False);
 	server.atom._XEMBED_INFO = XInternAtom(server.dsp, "_XEMBED_INFO", False);
 	server.atom._NET_WM_PID = XInternAtom(server.dsp, "_NET_WM_PID", True);
@@ -359,6 +361,20 @@ next:
 		server.monitor[0].width = DisplayWidth (server.dsp, server.screen);
 		server.monitor[0].height = DisplayHeight (server.dsp, server.screen);
 		server.monitor[0].names = 0;
+	}
+}
+
+void print_monitors()
+{
+	fprintf(stderr, "Number of monitors: %d\n", server.nb_monitor);
+	int i;
+	for (i = 0; i < server.nb_monitor; i++) {
+		fprintf(stderr, "Monitor %d: x = %d, y = %d, w = %d, h = %d\n",
+				i+1,
+				server.monitor[i].x,
+				server.monitor[i].y,
+				server.monitor[i].width,
+				server.monitor[i].height);
 	}
 }
 

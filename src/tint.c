@@ -447,11 +447,27 @@ int tint2_handles_click(Panel* panel, XButtonEvent* e)
 	if (tskbar && e->button == 1 && panel_mode == MULTI_DESKTOP)
 		return 1;
 	if (click_clock(panel, e->x, e->y)) {
-		if ( (e->button == 1 && clock_lclick_command) || (e->button == 3 && clock_rclick_command) )
+		if (	(e->button == 1 && clock_lclick_command) ||
+			(e->button == 2 && clock_mclick_command) ||
+			(e->button == 3 && clock_rclick_command) ||
+			(e->button == 4 && clock_uwheel_command) ||
+			(e->button == 5 && clock_dwheel_command) )
 			return 1;
 		else
 			return 0;
 	}
+	#ifdef ENABLE_BATTERY
+	if (click_battery(panel, e->x, e->y)) {
+		if (	(e->button == 1 && battery_lclick_command) ||
+			(e->button == 2 && battery_mclick_command) ||
+			(e->button == 3 && battery_rclick_command) ||
+			(e->button == 4 && battery_uwheel_command) ||
+			(e->button == 5 && battery_dwheel_command) )
+			return 1;
+		else
+			return 0;
+	}
+	#endif
 	return 0;
 }
 
@@ -598,6 +614,16 @@ void event_button_release (XEvent *e)
 		task_drag = 0;
 		return;
 	}
+
+	#ifdef ENABLE_BATTERY
+	if (click_battery(panel, e->xbutton.x, e->xbutton.y)) {
+		battery_action(e->xbutton.button);
+		if (panel_layer == BOTTOM_LAYER)
+			XLowerWindow (server.dsp, panel->main_win);
+		task_drag = 0;
+		return;
+	}
+	#endif
 
 	if (e->xbutton.button == 1 && click_launcher(panel, e->xbutton.x, e->xbutton.y)) {
 		LauncherIcon *icon = click_launcher_icon(panel, e->xbutton.x, e->xbutton.y);
@@ -1219,7 +1245,7 @@ start:
 					sigchld_handler_async();
 				}
 			}
-			while (XPending(server.dsp) > 0) {
+			if (XPending(server.dsp) > 0) {
 				XNextEvent(server.dsp, &e);
 #if HAVE_SN
 				if (startup_notifications)
@@ -1286,15 +1312,48 @@ start:
 					event_configure_notify(&e);
 					break;
 
+				case ConfigureRequest:
+					// 'win' is a trayer icon
+					for (it = systray.list_icons; it ; it = g_slist_next(it)) {
+						TrayWindow *traywin = (TrayWindow*)it->data;
+						if (traywin->win == e.xany.window) {
+							systray_reconfigure_event(traywin, &e);
+							break;
+						}
+					}
+					break;
+
+				case ResizeRequest:
+					// 'win' is a trayer icon
+					for (it = systray.list_icons; it ; it = g_slist_next(it)) {
+						TrayWindow *traywin = (TrayWindow*)it->data;
+						if (traywin->win == e.xany.window) {
+							systray_resize_request_event(traywin, &e);
+							break;
+						}
+					}
+					break;
+
 				case ReparentNotify:
 					if (!systray_enabled)
 						break;
 					panel = (Panel*)systray.area.panel;
-					if (e.xany.window == panel->main_win) // reparented to us
+					if (e.xany.window == panel->main_win) // don't care
 						break;
-					// FIXME: 'reparent to us' badly detected => disabled
+					for (it = systray.list_icons; it; it = g_slist_next(it)) {
+						TrayWindow *traywin = (TrayWindow*)it->data;
+						if (traywin->win == e.xreparent.window) {
+							if (traywin->parent == e.xreparent.parent) {
+								embed_icon(traywin);
+							} else {
+								remove_icon(traywin);
+							}
+							break;
+						}
+					}
 					break;
 				case UnmapNotify:
+					break;
 				case DestroyNotify:
 					if (e.xany.window == server.composite_manager) {
 						// Stop real_transparency
