@@ -922,6 +922,7 @@ int config_read_file (const char *path)
 	FILE *fp;
 	char line[512];
 	char *key, *value;
+	char *path1;
 
 	if ((fp = fopen(path, "r")) == NULL) return 0;
 
@@ -933,7 +934,25 @@ int config_read_file (const char *path)
 		}
 	}
 	fclose (fp);
-	
+
+	// secondary configuration file for Semplice's needs
+	path1 = g_build_filename (g_get_user_config_dir(), "tint2", "secondary_config", NULL);
+	if (g_file_test (path1, G_FILE_TEST_EXISTS)) {
+		if ((fp = fopen(path1, "r")) != NULL) {
+			while (fgets(line, sizeof(line), fp) != NULL) {
+				if (parse_line(line, &key, &value)) {
+					add_entry (key, value);
+					free (key);
+					free (value);
+				}
+			}
+		}
+		fclose (fp);
+	}
+	g_free(path1);
+	// end
+
+
 	// append Taskbar item
 	if (new_config_file == 0) {
 		taskbar_enabled = 1;
