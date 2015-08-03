@@ -1,4 +1,4 @@
-tint2 (0.12-1) UNRELEASED; urgency=medium
+tint2 (0.12-1) unstable; urgency=medium
 
   * New upstream release (Closes: #793797)
    - Drop 04-freespace.patch (applied upstream)
