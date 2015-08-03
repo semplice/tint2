@@ -1,3 +1,9 @@
+tint2 (0.12.1-2) unstable; urgency=medium
+
+  * Import upstream patch fixing bug with blinking systray icon
+
+ -- Sebastian Reichel <sre@debian.org>  Tue, 04 Aug 2015 01:16:08 +0200
+
 tint2 (0.12.1-1) unstable; urgency=medium
 
   * New upstream release
