@@ -1,2 +1,3 @@
 01-fix-parameter-check.patch
 02-fix-tooltip_trigger_hide.patch
+03-fix-gtk-status-icon-blinking.patch
