@@ -1,3 +1,26 @@
+tint2 (0.12.1+git20150807-1+semplice0) changes-unstable; urgency=medium
+
+  [ o9000 ]
+  * Remove parameter from tooltip_trigger_hide() (issue #516)
+  * Fix command line argument processing (issue #516)
+  * Systray: do not move empty icons to the side, as it breaks GTK2 StatusIcon blinking (issue #515)
+
+  [ Sebastian Reichel ]
+  * reset color after systray existing message
+
+  [ o9000 ]
+  * tint2conf: Fix read of panel_monitor (issue #520)
+  * Update author list (Sebastian's info)
+
+  [ Sebastian Reichel ]
+  * fix battery option parsing
+
+  [ Eugenio Paolantonio (g7) ]
+  * [patches] Dropped 01-fix-parameter-check.patch and 02-fix-tooltip_trigger_hide.patch,
+    integrated in upstream.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Sat, 08 Aug 2015 19:34:25 +0200
+
 tint2 (0.12.1-1+semplice0) changes-unstable; urgency=medium
 
   * New upstream release
