@@ -295,7 +295,7 @@ void start_net()
 		_NET_WM_PID = XInternAtom(server.dsp, "_NET_WM_PID", True);
 		int ret = XGetWindowProperty(server.dsp, win, _NET_WM_PID, 0, 1024, False, AnyPropertyType, &actual_type, &actual_format, &nitems, &bytes_after, &prop);
 
-		fprintf(stderr, RED "tint2 : another systray is running");
+		fprintf(stderr, RED "tint2 : another systray is running" RESET);
 		if (ret == Success && prop) {
 			pid = prop[1] * 256;
 			pid += prop[0];
@@ -419,10 +419,13 @@ static gint compare_traywindows(gconstpointer a, gconstpointer b)
 	const TrayWindow * traywin_a = (TrayWindow*)a;
 	const TrayWindow * traywin_b = (TrayWindow*)b;
 
+#if 0
+	// This breaks pygtk2 StatusIcon with blinking activated
 	if (traywin_a->empty && !traywin_b->empty)
 		return 1 * (systray.sort == SYSTRAY_SORT_RIGHT2LEFT ? -1 : 1);
 	if (!traywin_a->empty && traywin_b->empty)
 		return -1 * (systray.sort == SYSTRAY_SORT_RIGHT2LEFT ? -1 : 1);
+#endif
 
 	if (systray.sort == SYSTRAY_SORT_ASCENDING ||
 		systray.sort == SYSTRAY_SORT_DESCENDING) {
