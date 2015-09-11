@@ -1,6 +1,7 @@
 tint2 (0.12.2-1) unstable; urgency=medium
 
   * New upstream release
+  * Drop all patches (applied upstream)
 
  -- Sebastian Reichel <sre@debian.org>  Fri, 11 Sep 2015 18:41:22 +0200
 
