@@ -1,3 +1,10 @@
+tint2 (0.12.2+git20150811-1+semplice0) changes-unstable; urgency=medium
+
+  [ o9000 ]
+  * Updated for 0.12.2
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Mon, 14 Sep 2015 00:29:09 +0200
+
 tint2 (0.12.1+git20150807-1+semplice0) changes-unstable; urgency=medium
 
   [ o9000 ]
