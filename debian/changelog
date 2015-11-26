@@ -1,3 +1,10 @@
+tint2 (0.12.3-1) unstable; urgency=low
+
+  * New upstream release
+  * Fix privacy-breach-generic in documentation
+
+ -- Sebastian Reichel <sre@debian.org>  Thu, 26 Nov 2015 22:49:26 +0100
+
 tint2 (0.12.2+git20150811-1+semplice0) changes-unstable; urgency=medium
 
   [ o9000 ]
