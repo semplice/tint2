@@ -1,3 +1,118 @@
+tint2 (1:0.12.3-1semplice1) unstable; urgency=medium
+
+  [ o9000 ]
+  * Remove parameter from tooltip_trigger_hide() (issue #516)
+  * Fix command line argument processing (issue #516)
+  * Systray: do not move empty icons to the side, as it breaks GTK2 StatusIcon blinking (issue #515)
+
+  [ Sebastian Reichel ]
+  * Split out Linux battery implementation and support multiple batteries
+  * reset color after systray existing message
+
+  [ o9000 ]
+  * tint2conf: Fix read of panel_monitor (issue #520)
+  * Update author list (Sebastian's info)
+
+  [ Sebastian Reichel ]
+  * Add battery tooltip support
+  * Update copyright info in battery files
+  * fix battery option parsing
+  * Add support for battery tooltip option in tint2conf
+
+  [ o9000 ]
+  * Update IDE file list
+  * Updated changelog
+
+  [ Sebastian Reichel ]
+  * Fix memory leak for battery tooltips
+  * Remove static clock tooltip buffer
+  * battery: move percentage calculation to linux code
+  * Add battery Mains/AC support for Linux
+  * Battery: Split operating system specific code
+  * Battery: support for ac connection event cmd
+  * tint2conf: add support for ac_connected_cmd and ac_disconnected_cmd
+
+  [ o9000 ]
+  * Revert "Remove static clock tooltip buffer" (g_date_time_format uses format strings slightly different from strftime)
+  * Update type for ac_connected variables
+  * battery: Update AC status on FreeBSD
+  * battery: Tooltips for FreeBSD
+  * battery: Tooltips for FreeBSD (fix typo)
+  * battery: Tooltips for FreeBSD (fix format string)
+  * battery: Capitalize AC state in tooltips
+  * Update file list for IDE
+  * battery: Updates for OpenBSD
+  * battery: Updates for OpenBSD
+
+  [ Sebastian Reichel ]
+  * Avoid linking against disabled features
+  * Add Linux kernel event handling code
+  * Battery: Handle Linux kernel events
+  * Battery: Avoid executing ac_connected cmd on startup
+
+  [ o9000 ]
+  * Updated IDE files
+  * uevent: Use strchr here
+  * if( -> if (
+  * Updated for 0.12.2
+  * Updated tint2.desktop (fixes issue #523)
+  * Fix lost font setting for desktop name
+
+  [ Sebastian Reichel ]
+  * free ac_connected_cmd and ac_disconnected_cmd on cleanup
+  * correctly free battery linked list
+  * support missing power usage data
+
+  [ o9000 ]
+  * Initialize ac_connected_cmd and ac_disconnected_cmd
+  * Battery: prevent division by zero
+  * Battery: fix comment in estimate_power_usage
+  * Battery: minor code style change
+  * tint2conf: Add background labels
+  * Updated changelog
+  * Refactored text size computation
+  * Refactored svg image loading
+  * tint2conf: Changed plugin order
+  * Refactored text size computation (missed a change for the battery)
+  * Fix lost settings on battery plug/unplug
+  * Updated French translation (thanks to Melodie and her team)
+  * tint2conf: Call setlocale with no locale to use system default instead of C
+  * tint2conf: Updated POT and PO files (translation update needed)
+  * tint2conf: Updated French PO (review needed)
+  * tint2conf: Updated French PO (removed fuzzy flag; review still needed)
+  * tint2conf: Updated French PO (added corrections from Mélodie)
+  * Mouse over effects
+  * Launcher icon background
+  * Updated changelog
+  * Area: do not destroy pixmap when not necessary
+  * Area: refactor list -> children
+  * Revert "Area: do not destroy pixmap when not necessary"
+  * Task: disable pixmap caching (temporary change until we make it work with mouse effects)
+  * Mouse pressed effect + some fixes for mouse over
+  * Fix segfault
+  * Mouse effects: tint icons
+  * Mouse effects: fixes, changed defaults, more config options
+  * Mouse effects: updated tint2conf
+  * Mouse effects: updated tint2conf
+  * Fix compile error with cmake -DENABLE_RSVG=OFF
+  * Mouse effects: updated sample configs
+  * Mouse effects: changed defaults
+  * Mouse effects: changed defaults + disabled pixmap caching
+  * Mouse effects: updated translations
+  * Updated changelog for 0.12.3
+  * Updated changelog for 0.12.3
+  * Updated for 0.12.3
+
+  [ Sebastian Reichel ]
+  * remove privacy-breach-generic problems in documentation
+  * new upstream release
+
+  [ Eugenio Paolantonio (g7) ]
+  * [packaging] Use an epoch to avoid not requested upgrades to upstream's
+    version.
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Sat, 28 Nov 2015 16:10:19 +0100
+
 tint2 (0.12.3-1) unstable; urgency=low
 
   * New upstream release
