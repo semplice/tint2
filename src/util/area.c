@@ -71,13 +71,15 @@
  *
  ************************************************************/
 
+Area *mouse_over_area = NULL;
+
 void init_rendering(void *obj, int pos)
 {
 	Area *a = (Area*)obj;
 	
 	// initialize fixed position/size
 	GList *l;
-	for (l = a->list; l ; l = l->next) {
+	for (l = a->children; l ; l = l->next) {
 		Area *child = ((Area*)l->data);
 		if (panel_horizontal) {
 			child->posy = pos + a->bg->border.width + a->paddingy;
@@ -116,7 +118,7 @@ void size_by_content (Area *a)
 
 	// children node are resized before its parent
 	GList *l;
-	for (l = a->list; l ; l = l->next)
+	for (l = a->children; l ; l = l->next)
 		size_by_content(l->data);
 	
 	// calculate area's size
@@ -150,20 +152,20 @@ void size_by_layout (Area *a, int level)
 		if (a->_resize) {
 			a->_resize(a);
 			// resize childs with SIZE_BY_LAYOUT
-			for (l = a->list; l ; l = l->next) {
+			for (l = a->children; l ; l = l->next) {
 				Area *child = ((Area*)l->data);
-				if (child->size_mode == SIZE_BY_LAYOUT && child->list)
+				if (child->size_mode == SIZE_BY_LAYOUT && child->children)
 					child->resize = 1;
 			}
 		}
 	}
 
 	// update position of children
-	if (a->list) {
+	if (a->children) {
 		if (a->alignment == ALIGN_LEFT) {
 			int pos = (panel_horizontal ? a->posx : a->posy) + a->bg->border.width + a->paddingxlr;
 
-			for (l = a->list; l ; l = l->next) {
+			for (l = a->children; l ; l = l->next) {
 				Area *child = ((Area*)l->data);
 				if (!child->on_screen)
 					continue;
@@ -189,7 +191,7 @@ void size_by_layout (Area *a, int level)
 		} else if (a->alignment == ALIGN_RIGHT) {
 			int pos = (panel_horizontal ? a->posx + a->width : a->posy + a->height) - a->bg->border.width - a->paddingxlr;
 
-			for (l = g_list_last(a->list); l ; l = l->prev) {
+			for (l = g_list_last(a->children); l ; l = l->prev) {
 				Area *child = ((Area*)l->data);
 				if (!child->on_screen)
 					continue;
@@ -218,19 +220,19 @@ void size_by_layout (Area *a, int level)
 
 			int children_size = 0;
 
-			for (l = a->list; l ; l = l->next) {
+			for (l = a->children; l ; l = l->next) {
 				Area *child = ((Area*)l->data);
 				if (!child->on_screen)
 					continue;
 
 				children_size += panel_horizontal ? child->width : child->height;
-				children_size += (l == a->list) ? 0 : a->paddingx;
+				children_size += (l == a->children) ? 0 : a->paddingx;
 			}
 
 			int pos = (panel_horizontal ? a->posx : a->posy) + a->bg->border.width + a->paddingxlr;
 			pos += ((panel_horizontal ? a->width : a->height) - children_size) / 2;
 
-			for (l = a->list; l ; l = l->next) {
+			for (l = a->children; l ; l = l->next) {
 				Area *child = ((Area*)l->data);
 				if (!child->on_screen)
 					continue;
@@ -275,7 +277,7 @@ void refresh (Area *a)
 		a->redraw = 0;
 		// force redraw of child
 		//GList *l;
-		//for (l = a->list ; l ; l = l->next)
+		//for (l = a->children ; l ; l = l->next)
 			//((Area*)l->data)->redraw = 1;
 
 		//printf("draw area posx %d, width %d\n", a->posx, a->width);
@@ -288,8 +290,8 @@ void refresh (Area *a)
 
 	// and then refresh child object
 	GList *l;
-	for (l = a->list; l ; l = l->next)
-		refresh(l->data);
+	for (l = a->children; l ; l = l->next)
+		refresh((Area*)l->data);
 }
 
 
@@ -302,7 +304,7 @@ int resize_by_layout(void *obj, int maximum_size)
 		// detect free size for SIZE_BY_LAYOUT's Area
 		size = a->width - (2 * (a->paddingxlr + a->bg->border.width));
 		GList *l;
-		for (l = a->list ; l ; l = l->next) {
+		for (l = a->children ; l ; l = l->next) {
 			child = (Area*)l->data;
 			if (child->on_screen && child->size_mode == SIZE_BY_CONTENT) {
 				size -= child->width;
@@ -326,7 +328,7 @@ int resize_by_layout(void *obj, int maximum_size)
 		}
 
 		// resize SIZE_BY_LAYOUT objects
-		for (l = a->list ; l ; l = l->next) {
+		for (l = a->children ; l ; l = l->next) {
 			child = (Area*)l->data;
 			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT) {
 				old_width = child->width;
@@ -344,7 +346,7 @@ int resize_by_layout(void *obj, int maximum_size)
 		// detect free size for SIZE_BY_LAYOUT's Area
 		size = a->height - (2 * (a->paddingxlr + a->bg->border.width));
 		GList *l;
-		for (l = a->list ; l ; l = l->next) {
+		for (l = a->children ; l ; l = l->next) {
 			child = (Area*)l->data;
 			if (child->on_screen && child->size_mode == SIZE_BY_CONTENT) {
 				size -= child->height;
@@ -367,7 +369,7 @@ int resize_by_layout(void *obj, int maximum_size)
 		}
 
 		// resize SIZE_BY_LAYOUT objects
-		for (l = a->list ; l ; l = l->next) {
+		for (l = a->children ; l ; l = l->next) {
 			child = (Area*)l->data;
 			if (child->on_screen && child->size_mode == SIZE_BY_LAYOUT) {
 				int old_height = child->height;
@@ -390,8 +392,8 @@ void set_redraw (Area *a)
 	a->redraw = 1;
 
 	GList *l;
-	for (l = a->list ; l ; l = l->next)
-		set_redraw(l->data);
+	for (l = a->children ; l ; l = l->next)
+		set_redraw((Area*)l->data);
 }
 
 void hide(Area *a)
@@ -443,69 +445,50 @@ void draw (Area *a)
 
 void draw_background (Area *a, cairo_t *c)
 {
-	if (a->bg->back.alpha > 0.0) {
+	if (a->bg->back.alpha > 0.0 ||
+		(panel_config.mouse_effects && (a->mouse_over_effect || a->mouse_press_effect))) {
 		//printf("    draw_background (%d %d) RGBA (%lf, %lf, %lf, %lf)\n", a->posx, a->posy, pix->back.color[0], pix->back.color[1], pix->back.color[2], pix->back.alpha);
+		if (a->mouse_state == MOUSE_OVER)
+			cairo_set_source_rgba(c, a->bg->back_hover.color[0], a->bg->back_hover.color[1], a->bg->back_hover.color[2], a->bg->back_hover.alpha);
+		else if (a->mouse_state == MOUSE_DOWN)
+			cairo_set_source_rgba(c, a->bg->back_pressed.color[0], a->bg->back_pressed.color[1], a->bg->back_pressed.color[2], a->bg->back_pressed.alpha);
+		else
+			cairo_set_source_rgba(c, a->bg->back.color[0], a->bg->back.color[1], a->bg->back.color[2], a->bg->back.alpha);
 		draw_rect(c, a->bg->border.width, a->bg->border.width, a->width-(2.0 * a->bg->border.width), a->height-(2.0*a->bg->border.width), a->bg->border.rounded - a->bg->border.width/1.571);
-		cairo_set_source_rgba(c, a->bg->back.color[0], a->bg->back.color[1], a->bg->back.color[2], a->bg->back.alpha);
 		cairo_fill(c);
 	}
 
-	if (a->bg->border.width > 0 && a->bg->border.alpha > 0.0) {
+	if (a->bg->border.width > 0) {
 		cairo_set_line_width (c, a->bg->border.width);
 
 		// draw border inside (x, y, width, height)
+		if (a->mouse_state == MOUSE_OVER)
+			cairo_set_source_rgba(c, a->bg->border_hover.color[0], a->bg->border_hover.color[1], a->bg->border_hover.color[2], a->bg->border_hover.alpha);
+		else if (a->mouse_state == MOUSE_DOWN)
+			cairo_set_source_rgba(c, a->bg->border_pressed.color[0], a->bg->border_pressed.color[1], a->bg->border_pressed.color[2], a->bg->border_pressed.alpha);
+		else
+			cairo_set_source_rgba(c, a->bg->border.color[0], a->bg->border.color[1], a->bg->border.color[2], a->bg->border.alpha);
 		draw_rect(c, a->bg->border.width/2.0, a->bg->border.width/2.0, a->width - a->bg->border.width, a->height - a->bg->border.width, a->bg->border.rounded);
-		/*
-		// convert : radian = degre * M_PI/180
-		// definir le degrade dans un carre de (0,0) (100,100)
-		// ensuite ce degrade est extrapoler selon le ratio width/height
-		// dans repere (0, 0) (100, 100)
-		double X0, Y0, X1, Y1, degre;
-		// x = X * (a->width / 100), y = Y * (a->height / 100)
-		double x0, y0, x1, y1;
-		X0 = 0;
-		Y0 = 100;
-		X1 = 100;
-		Y1 = 0;
-		degre = 45;
-		// et ensuite faire la changement d'unite du repere
-		// car ce qui doit reste inchangee est les traits et pas la direction
 
-		// il faut d'abord appliquer une rotation de 90 (et -180 si l'angle est superieur a  180)
-		// ceci peut etre applique une fois pour toute au depart
-		// ensuite calculer l'angle dans le nouveau repare
-		// puis faire une rotation de 90
-		x0 = X0 * ((double)a->width / 100);
-		x1 = X1 * ((double)a->width / 100);
-		y0 = Y0 * ((double)a->height / 100);
-		y1 = Y1 * ((double)a->height / 100);
-
-		x0 = X0 * ((double)a->height / 100);
-		x1 = X1 * ((double)a->height / 100);
-		y0 = Y0 * ((double)a->width / 100);
-		y1 = Y1 * ((double)a->width / 100);
-
-		cairo_pattern_t *linpat;
-		linpat = cairo_pattern_create_linear (x0, y0, x1, y1);
-		cairo_pattern_add_color_stop_rgba (linpat, 0, a->border.color[0], a->border.color[1], a->border.color[2], a->border.alpha);
-		cairo_pattern_add_color_stop_rgba (linpat, 1, a->border.color[0], a->border.color[1], a->border.color[2], 0);
-		cairo_set_source (c, linpat);
-		*/
-		cairo_set_source_rgba (c, a->bg->border.color[0], a->bg->border.color[1], a->bg->border.color[2], a->bg->border.alpha);
-
-		cairo_stroke (c);
-		//cairo_pattern_destroy (linpat);
+		cairo_stroke(c);
 	}
 }
 
 
-void remove_area (Area *a)
+void remove_area (void *a)
 {
-	Area *parent = (Area*)a->parent;
+	Area *area = (Area*)a;
+	Area *parent = (Area*)area->parent;
 
-	parent->list = g_list_remove(parent->list, a);
-	set_redraw (parent);
+	if (parent) {
+		parent->children = g_list_remove(parent->children, area);
+		parent->resize = 1;
+		set_redraw(parent);
+	}
 
+	if (mouse_over_area == a) {
+		mouse_out();
+	}
 }
 
 
@@ -513,7 +496,7 @@ void add_area (Area *a)
 {
 	Area *parent = (Area*)a->parent;
 
-	parent->list = g_list_append(parent->list, a);
+	parent->children = g_list_append(parent->children, a);
 	set_redraw (parent);
 
 }
@@ -525,16 +508,19 @@ void free_area (Area *a)
 		return;
 
 	GList *l0;
-	for (l0 = a->list; l0 ; l0 = l0->next)
+	for (l0 = a->children; l0 ; l0 = l0->next)
 		free_area (l0->data);
 
-	if (a->list) {
-		g_list_free(a->list);
-		a->list = 0;
+	if (a->children) {
+		g_list_free(a->children);
+		a->children = 0;
 	}
 	if (a->pix) {
 		XFreePixmap (server.dsp, a->pix);
 		a->pix = 0;
+	}
+	if (mouse_over_area == a) {
+		mouse_over_area = NULL;
 	}
 }
 
@@ -565,4 +551,49 @@ void clear_pixmap(Pixmap p, int x, int y, int w, int h)
 	XRenderColor col = { .red=0, .green=0, .blue=0, .alpha=0 };
 	XRenderFillRectangle(server.dsp, PictOpSrc, pict, &col, x, y, w, h);
 	XRenderFreePicture(server.dsp, pict);
+}
+
+void mouse_over(Area *area, int pressed)
+{
+	if (mouse_over_area == area && !area)
+		return;
+
+	MouseState new_state = MOUSE_NORMAL;
+	if (area) {
+		if (!pressed) {
+			new_state = area->mouse_over_effect ? MOUSE_OVER : MOUSE_NORMAL;
+		} else {
+			new_state = area->mouse_press_effect
+						? MOUSE_DOWN
+						: area->mouse_over_effect
+						  ? MOUSE_OVER
+						  : MOUSE_NORMAL;
+		}
+	}
+
+	if (mouse_over_area == area && mouse_over_area->mouse_state == new_state)
+		return;
+	mouse_out();
+	if (new_state == MOUSE_NORMAL)
+		return;
+	mouse_over_area = area;
+
+	mouse_over_area->mouse_state = new_state;
+	set_redraw(mouse_over_area);
+	panel_refresh = 1;
+}
+
+void mouse_out()
+{
+	if (!mouse_over_area)
+		return;
+	mouse_over_area->mouse_state = MOUSE_NORMAL;
+	set_redraw(mouse_over_area);
+	panel_refresh = 1;
+	mouse_over_area = NULL;
+}
+
+void init_background(Background *bg)
+{
+	memset(bg, 0, sizeof(Background));
 }

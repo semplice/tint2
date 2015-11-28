@@ -49,6 +49,7 @@
 #include "tooltip.h"
 #include "timer.h"
 #include "xsettings-client.h"
+#include "uevent.h"
 
 // Drag and Drop state variables
 Window dnd_source_window;
@@ -340,6 +341,8 @@ void cleanup()
 		}
 	}
 #endif
+
+	uevent_cleanup();
 }
 
 
@@ -435,7 +438,7 @@ int tint2_handles_click(Panel* panel, XButtonEvent* e)
 {
 	Task* task = click_task(panel, e->x, e->y);
 	if (task) {
-		if(   (e->button == 1 && mouse_left != 0)
+		if (   (e->button == 1 && mouse_left != 0)
 			  || (e->button == 2 && mouse_middle != 0)
 			  || (e->button == 3 && mouse_right != 0)
 			  || (e->button == 4 && mouse_scroll_up != 0)
@@ -518,27 +521,27 @@ void event_button_press (XEvent *e)
 void event_button_motion_notify (XEvent *e)
 {
 	Panel * panel = get_panel(e->xany.window);
-	if(!panel || !task_drag)
+	if (!panel || !task_drag)
 		return;
 
 	// Find the taskbar on the event's location
 	Taskbar * event_taskbar = click_taskbar(panel, e->xbutton.x, e->xbutton.y);
-	if(event_taskbar == NULL)
+	if (event_taskbar == NULL)
 		return;
 
 	// Find the task on the event's location
 	Task * event_task = click_task(panel, e->xbutton.x, e->xbutton.y);
 
 	// If the event takes place on the same taskbar as the task being dragged
-	if(event_taskbar == task_drag->area.parent)	{
+	if (event_taskbar == task_drag->area.parent)	{
 		if (taskbar_sort_method != TASKBAR_NOSORT) {
 			sort_tasks(event_taskbar);
 		} else {
 			// Swap the task_drag with the task on the event's location (if they differ)
-			if(event_task && event_task != task_drag) {
-				GList * drag_iter = g_list_find(event_taskbar->area.list, task_drag);
-				GList * task_iter = g_list_find(event_taskbar->area.list, event_task);
-				if(drag_iter && task_iter) {
+			if (event_task && event_task != task_drag) {
+				GList * drag_iter = g_list_find(event_taskbar->area.children, task_drag);
+				GList * task_iter = g_list_find(event_taskbar->area.children, event_task);
+				if (drag_iter && task_iter) {
 					gpointer temp = task_iter->data;
 					task_iter->data = drag_iter->data;
 					drag_iter->data = temp;
@@ -550,18 +553,18 @@ void event_button_motion_notify (XEvent *e)
 		}
 	}
 	else { // The event is on another taskbar than the task being dragged
-		if(task_drag->desktop == ALLDESKTOP || panel_mode != MULTI_DESKTOP)
+		if (task_drag->desktop == ALLDESKTOP || panel_mode != MULTI_DESKTOP)
 			return;
 
 		Taskbar * drag_taskbar = (Taskbar*)task_drag->area.parent;
-		drag_taskbar->area.list = g_list_remove(drag_taskbar->area.list, task_drag);
+		remove_area(task_drag);
 
-		if(event_taskbar->area.posx > drag_taskbar->area.posx || event_taskbar->area.posy > drag_taskbar->area.posy) {
+		if (event_taskbar->area.posx > drag_taskbar->area.posx || event_taskbar->area.posy > drag_taskbar->area.posy) {
 			int i = (taskbarname_enabled) ? 1 : 0;
-			event_taskbar->area.list = g_list_insert(event_taskbar->area.list, task_drag, i);
+			event_taskbar->area.children = g_list_insert(event_taskbar->area.children, task_drag, i);
 		}
 		else
-			event_taskbar->area.list = g_list_append(event_taskbar->area.list, task_drag);
+			event_taskbar->area.children = g_list_append(event_taskbar->area.children, task_drag);
 
 		// Move task to other desktop (but avoid the 'Window desktop changed' code in 'event_property_notify')
 		task_drag->area.parent = event_taskbar;
@@ -755,7 +758,7 @@ void event_property_notify (XEvent *e)
 				Task *tsk;
 				if (server.nb_desktop > old_desktop) {
 					tskbar = &panel->taskbar[old_desktop];
-					GList *l = tskbar->area.list;
+					GList *l = tskbar->area.children;
 					if (taskbarname_enabled) l = l->next;
 					for (; l ; l = l->next) {
 						tsk = l->data;
@@ -769,7 +772,7 @@ void event_property_notify (XEvent *e)
 					}
 				}
 				tskbar = &panel->taskbar[server.desktop];
-				GList *l = tskbar->area.list;
+				GList *l = tskbar->area.children;
 				if (taskbarname_enabled) l = l->next;
 				for (; l ; l = l->next) {
 					tsk = l->data;
@@ -1201,6 +1204,8 @@ start:
 	dnd_sent_request = 0;
 	dnd_launcher_exec = 0;
 
+	int ufd = uevent_init();
+
 	//	sigset_t empty_mask;
 	//	sigemptyset(&empty_mask);
 
@@ -1243,6 +1248,10 @@ start:
 			FD_SET (sn_pipe[0], &fdset);
 			maxfd = maxfd < sn_pipe[0] ? sn_pipe[0] : maxfd;
 		}
+		if (ufd > 0) {
+			FD_SET (ufd, &fdset);
+			maxfd = maxfd < ufd ? ufd : maxfd;
+		}
 		update_next_timeout();
 		if (next_timeout.tv_sec >= 0 && next_timeout.tv_usec >= 0)
 			select_timeout = &next_timeout;
@@ -1251,6 +1260,8 @@ start:
 
 		// Wait for X Event or a Timer
 		if (XPending(server.dsp) > 0 || select(maxfd+1, &fdset, 0, 0, select_timeout) >= 0) {
+			uevent_handler();
+
 			if (sn_pipe_valid) {
 				char buffer[1];
 				while (read(sn_pipe[0], buffer, sizeof(buffer)) > 0) {
@@ -1285,14 +1296,22 @@ start:
 				}
 
 				switch (e.type) {
-				case ButtonPress:
+				case ButtonPress: {
 					tooltip_hide(0);
 					event_button_press (&e);
+					Area* area = click_area(panel, e.xbutton.x, e.xbutton.y);
+					if (panel_config.mouse_effects)
+						mouse_over(area, 1);
 					break;
+				}
 
-				case ButtonRelease:
+				case ButtonRelease: {
 					event_button_release(&e);
+					Area* area = click_area(panel, e.xbutton.x, e.xbutton.y);
+					if (panel_config.mouse_effects)
+						mouse_over(area, 0);
 					break;
+				}
 
 				case MotionNotify: {
 					unsigned int button_mask = Button1Mask | Button2Mask | Button3Mask | Button4Mask | Button5Mask;
@@ -1305,11 +1324,15 @@ start:
 						tooltip_trigger_show(area, panel, &e);
 					else
 						tooltip_trigger_hide();
+					if (panel_config.mouse_effects)
+						mouse_over(area, e.xmotion.state & button_mask);
 					break;
 				}
 
 				case LeaveNotify:
 					tooltip_trigger_hide();
+					if (panel_config.mouse_effects)
+						mouse_out();
 					break;
 
 				case Expose:

@@ -144,10 +144,10 @@ struct tm* clock_gettime_for_tz(const char* timezone) {
 	else return localtime(&time_clock.tv_sec);
 }
 
-const char* clock_get_tooltip(void* obj)
+char* clock_get_tooltip(void* obj)
 {
 	strftime(buf_tooltip, sizeof(buf_tooltip), time_tooltip_format, clock_gettime_for_tz(time_tooltip_timezone));
-	return buf_tooltip;
+	return strdup(buf_tooltip);
 }
 
 int time_format_needs_sec_ticks(char *time_format)
@@ -185,6 +185,11 @@ void init_clock_panel(void *p)
 		clock->area.bg = &g_array_index(backgrounds, Background, 0);
 	clock->area.parent = p;
 	clock->area.panel = p;
+	clock->area.mouse_press_effect = clock->area.mouse_over_effect = clock_lclick_command ||
+																	 clock_mclick_command ||
+																	 clock_rclick_command ||
+																	 clock_uwheel_command ||
+																	 clock_dwheel_command;
 	clock->area._draw_foreground = draw_clock;
 	clock->area.size_mode = SIZE_BY_CONTENT;
 	clock->area._resize = resize_clock;
@@ -213,6 +218,8 @@ void draw_clock (void *obj, cairo_t *c)
 	pango_layout_set_font_description (layout, time1_font_desc);
 	pango_layout_set_width (layout, clock->area.width * PANGO_SCALE);
 	pango_layout_set_alignment (layout, PANGO_ALIGN_CENTER);
+	pango_layout_set_wrap(layout, PANGO_WRAP_WORD_CHAR);
+	pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_NONE);
 	pango_layout_set_text (layout, buf_time, strlen(buf_time));
 
 	cairo_set_source_rgba (c, clock->font.color[0], clock->font.color[1], clock->font.color[2], clock->font.alpha);
@@ -244,10 +251,14 @@ int resize_clock (void *obj)
 	
 	date_height = date_width = 0;
 	strftime(buf_time, sizeof(buf_time), time1_format, clock_gettime_for_tz(time1_timezone));
-	get_text_size2(time1_font_desc, &time_height_ink, &time_height, &time_width, panel->area.height, panel->area.width, buf_time, strlen(buf_time));
+	get_text_size2(time1_font_desc, &time_height_ink, &time_height, &time_width, panel->area.height, panel->area.width, buf_time, strlen(buf_time),
+				   PANGO_WRAP_WORD_CHAR,
+				   PANGO_ELLIPSIZE_NONE);
 	if (time2_format) {
 		strftime(buf_date, sizeof(buf_date), time2_format, clock_gettime_for_tz(time2_timezone));
-		get_text_size2(time2_font_desc, &date_height_ink, &date_height, &date_width, panel->area.height, panel->area.width, buf_date, strlen(buf_date));
+		get_text_size2(time2_font_desc, &date_height_ink, &date_height, &date_width, panel->area.height, panel->area.width, buf_date, strlen(buf_date),
+					   PANGO_WRAP_WORD_CHAR,
+					   PANGO_ELLIPSIZE_NONE);
 	}
 
 	if (panel_horizontal) {

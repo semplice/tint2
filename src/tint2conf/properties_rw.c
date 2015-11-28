@@ -7,7 +7,7 @@
 #include "properties.h"
 #include "properties_rw.h"
 
-
+void finalize_bg();
 void add_entry(char *key, char *value);
 void hex2gdk(char *hex, GdkColor *color);
 void set_action(char *event, GtkWidget *combo);
@@ -22,8 +22,15 @@ int no_items_clock_enabled;
 int no_items_systray_enabled;
 int no_items_battery_enabled;
 
+static int num_bg;
+static int read_bg_color_hover;
+static int read_border_color_hover;
+static int read_bg_color_press;
+static int read_border_color_press;
+
 void config_read_file(const char *path)
 {
+	num_bg = 0;
 	background_create_new();
 
 	FILE *fp;
@@ -51,6 +58,8 @@ void config_read_file(const char *path)
 	}
 	fclose(fp);
 
+	finalize_bg();
+
 	if (!config_has_panel_items) {
 		char panel_items[256];
 		panel_items[0] = 0;
@@ -75,7 +84,7 @@ void config_read_file(const char *path)
 	}
 }
 
-void config_write_color(FILE *fp, char *name, GdkColor color, int opacity)
+void config_write_color(FILE *fp, const char *name, GdkColor color, int opacity)
 {
 	fprintf(fp,
 			"%s = #%02x%02x%02x %d\n",
@@ -110,20 +119,42 @@ void config_write_backgrounds(FILE *fp)
 		int fillOpacity;
 		GdkColor *borderColor;
 		int borderOpacity;
+		GdkColor *fillColorOver;
+		int fillOpacityOver;
+		GdkColor *borderColorOver;
+		int borderOpacityOver;
+		GdkColor *fillColorPress;
+		int fillOpacityPress;
+		GdkColor *borderColorPress;
+		int borderOpacityPress;
+		gchar *text;
 
 		gtk_tree_model_get(GTK_TREE_MODEL(backgrounds), &iter,
 						   bgColFillColor, &fillColor,
 						   bgColFillOpacity, &fillOpacity,
 						   bgColBorderColor, &borderColor,
 						   bgColBorderOpacity, &borderOpacity,
+						   bgColFillColorOver, &fillColorOver,
+						   bgColFillOpacityOver, &fillOpacityOver,
+						   bgColBorderColorOver, &borderColorOver,
+						   bgColBorderOpacityOver, &borderOpacityOver,
+						   bgColFillColorPress, &fillColorPress,
+						   bgColFillOpacityPress, &fillOpacityPress,
+						   bgColBorderColorPress, &borderColorPress,
+						   bgColBorderOpacityPress, &borderOpacityPress,
 						   bgColBorderWidth, &b,
 						   bgColCornerRadius, &r,
+						   bgColText, &text,
 						   -1);
-		fprintf(fp, "# Background %d\n", index);
+		fprintf(fp, "# Background %d: %s\n", index, text ? text : "");
 		fprintf(fp, "rounded = %d\n", r);
 		fprintf(fp, "border_width = %d\n", b);
 		config_write_color(fp, "background_color", *fillColor, fillOpacity);
 		config_write_color(fp, "border_color", *borderColor, borderOpacity);
+		config_write_color(fp, "background_color_hover", *fillColorOver, fillOpacityOver);
+		config_write_color(fp, "border_color_hover", *borderColorOver, borderOpacityOver);
+		config_write_color(fp, "background_color_pressed", *fillColorPress, fillOpacityPress);
+		config_write_color(fp, "border_color_pressed", *borderColorPress, borderOpacityPress);
 		fprintf(fp, "\n");
 	}
 }
@@ -214,7 +245,19 @@ void config_write_panel(FILE *fp)
 
 	fprintf(fp, "panel_window_name = %s\n", gtk_entry_get_text(GTK_ENTRY(panel_window_name)));
 	fprintf(fp, "disable_transparency = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(disable_transparency)) ? 1 : 0);
+	fprintf(fp, "mouse_effects = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(panel_mouse_effects)) ? 1 : 0);
 	fprintf(fp, "font_shadow = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(font_shadow)) ? 1 : 0);
+	fprintf(fp,
+			"mouse_hover_icon_asb = %d %d %d\n",
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_hover_icon_opacity)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_hover_icon_saturation)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_hover_icon_brightness)));
+	fprintf(fp,
+			"mouse_pressed_icon_asb = %d %d %d\n",
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_pressed_icon_opacity)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_pressed_icon_saturation)),
+			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(mouse_pressed_icon_brightness)));
+
 
 	fprintf(fp, "\n");
 }
@@ -466,6 +509,7 @@ void config_write_launcher(FILE *fp)
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_padding_y)),
 			(int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_spacing)));
 	fprintf(fp, "launcher_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(launcher_background)));
+	fprintf(fp, "launcher_icon_background_id = %d\n", gtk_combo_box_get_active(GTK_COMBO_BOX(launcher_icon_background)));
 	fprintf(fp, "launcher_icon_size = %d\n", (int)gtk_spin_button_get_value(GTK_SPIN_BUTTON(launcher_icon_size)));
 	fprintf(fp,
 			"launcher_icon_asb = %d %d %d\n",
@@ -560,6 +604,7 @@ void config_write_battery(FILE *fp)
 	fprintf(fp, "#-------------------------------------\n");
 	fprintf(fp, "# Battery\n");
 
+	fprintf(fp, "battery_tooltip = %d\n", gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(battery_tooltip)) ? 1 : 0);
 	fprintf(fp, "battery_low_status = %g\n", gtk_spin_button_get_value(GTK_SPIN_BUTTON(battery_alert_if_lower)));
 	fprintf(fp, "battery_low_cmd = %s\n", gtk_entry_get_text(GTK_ENTRY(battery_alert_cmd)));
 	fprintf(fp, "bat1_font = %s\n", gtk_font_button_get_font_name(GTK_FONT_BUTTON(battery_font_line1)));
@@ -581,6 +626,9 @@ void config_write_battery(FILE *fp)
 	fprintf(fp, "battery_mclick_command = %s\n", gtk_entry_get_text(GTK_ENTRY(battery_mclick_command)));
 	fprintf(fp, "battery_uwheel_command = %s\n", gtk_entry_get_text(GTK_ENTRY(battery_uwheel_command)));
 	fprintf(fp, "battery_dwheel_command = %s\n", gtk_entry_get_text(GTK_ENTRY(battery_dwheel_command)));
+
+	fprintf(fp, "ac_connected_cmd = %s\n", gtk_entry_get_text(GTK_ENTRY(ac_connected_cmd)));
+	fprintf(fp, "ac_disconnected_cmd = %s\n", gtk_entry_get_text(GTK_ENTRY(ac_disconnected_cmd)));
 
 	fprintf(fp, "\n");
 }
@@ -690,6 +738,44 @@ gboolean config_is_manual(const char *path)
 	return result;
 }
 
+void finalize_bg()
+{
+	if (num_bg > 0) {
+		if (!read_bg_color_hover) {
+			GdkColor fillColor;
+			gtk_color_button_get_color(GTK_COLOR_BUTTON(background_fill_color), &fillColor);
+			gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_over), &fillColor);
+			int fillOpacity = gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_fill_color));
+			gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_over), fillOpacity);
+			background_force_update();
+		}
+		if (!read_border_color_hover) {
+			GdkColor fillColor;
+			gtk_color_button_get_color(GTK_COLOR_BUTTON(background_border_color), &fillColor);
+			gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_over), &fillColor);
+			int fillOpacity = gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_border_color));
+			gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_over), fillOpacity);
+			background_force_update();
+		}
+		if (!read_bg_color_press) {
+			GdkColor fillColor;
+			gtk_color_button_get_color(GTK_COLOR_BUTTON(background_fill_color), &fillColor);
+			gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_press), &fillColor);
+			int fillOpacity = gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_fill_color));
+			gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_press), fillOpacity);
+			background_force_update();
+		}
+		if (!read_border_color_press) {
+			GdkColor fillColor;
+			gtk_color_button_get_color(GTK_COLOR_BUTTON(background_border_color_over), &fillColor);
+			gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_press), &fillColor);
+			int fillOpacity = gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_border_color_over));
+			gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_press), fillOpacity);
+			background_force_update();
+		}
+	}
+}
+
 void add_entry(char *key, char *value)
 {
 	char *value1=0, *value2=0, *value3=0;
@@ -697,7 +783,13 @@ void add_entry(char *key, char *value)
 	/* Background and border */
 	if (strcmp(key, "rounded") == 0) {
 		// 'rounded' is the first parameter => alloc a new background
+		finalize_bg();
 		background_create_new();
+		num_bg++;
+		read_bg_color_hover = 0;
+		read_border_color_hover = 0;
+		read_bg_color_press = 0;
+		read_border_color_press = 0;
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(background_corner_radius), atoi(value));
 		background_force_update();
 	}
@@ -722,6 +814,46 @@ void add_entry(char *key, char *value)
 		int alpha = value2 ? atoi(value2) : 50;
 		gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color), (alpha*65535)/100);
 		background_force_update();
+	}
+	else if (strcmp(key, "background_color_hover") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		GdkColor col;
+		hex2gdk(value1, &col);
+		gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_over), &col);
+		int alpha = value2 ? atoi(value2) : 50;
+		gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_over), (alpha*65535)/100);
+		background_force_update();
+		read_bg_color_hover = 1;
+	}
+	else if (strcmp(key, "border_color_hover") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		GdkColor col;
+		hex2gdk(value1, &col);
+		gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_over), &col);
+		int alpha = value2 ? atoi(value2) : 50;
+		gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_over), (alpha*65535)/100);
+		background_force_update();
+		read_border_color_hover = 1;
+	}
+	else if (strcmp(key, "background_color_pressed") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		GdkColor col;
+		hex2gdk(value1, &col);
+		gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_press), &col);
+		int alpha = value2 ? atoi(value2) : 50;
+		gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_press), (alpha*65535)/100);
+		background_force_update();
+		read_bg_color_press = 1;
+	}
+	else if (strcmp(key, "border_color_pressed") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		GdkColor col;
+		hex2gdk(value1, &col);
+		gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_press), &col);
+		int alpha = value2 ? atoi(value2) : 50;
+		gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_press), (alpha*65535)/100);
+		background_force_update();
+		read_border_color_press = 1;
 	}
 
 	/* Panel */
@@ -836,6 +968,21 @@ void add_entry(char *key, char *value)
 	else if (strcmp(key, "disable_transparency") == 0) {
 		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(disable_transparency), atoi(value));
 	}
+	else if (strcmp(key, "mouse_effects") == 0) {
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(panel_mouse_effects), atoi(value));
+	}
+	else if (strcmp(key, "mouse_hover_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_opacity), atoi(value1));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_saturation), atoi(value2));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_brightness), atoi(value3));
+	}
+	else if (strcmp(key, "mouse_pressed_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_opacity), atoi(value1));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_saturation), atoi(value2));
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_brightness), atoi(value3));
+	}
 	else if (strcmp(key, "font_shadow") == 0) {
 		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(font_shadow), atoi(value));
 	}
@@ -902,8 +1049,9 @@ void add_entry(char *key, char *value)
 		// Obsolete option
 		config_has_battery = 1;
 		config_battery_enabled = atoi(value);
-	}
-	else if (strcmp(key, "battery_low_status") == 0) {
+	} else if (strcmp(key, "battery_tooltip") == 0) {
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(battery_tooltip), atoi(value));
+	} else if (strcmp(key, "battery_low_status") == 0) {
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(battery_alert_if_lower), atof(value));
 	}
 	else if (strcmp(key, "battery_low_cmd") == 0) {
@@ -955,6 +1103,12 @@ void add_entry(char *key, char *value)
 	}
 	else if (strcmp(key, "battery_dwheel_command") == 0) {
 		gtk_entry_set_text(GTK_ENTRY(battery_dwheel_command), value);
+	}
+	else if (strcmp(key, "ac_connected_cmd") == 0) {
+		gtk_entry_set_text(GTK_ENTRY(ac_connected_cmd), value);
+	}
+	else if (strcmp(key, "ac_disconnected_cmd") == 0) {
+		gtk_entry_set_text(GTK_ENTRY(ac_disconnected_cmd), value);
 	}
 
 	/* Clock */
@@ -1312,6 +1466,10 @@ void add_entry(char *key, char *value)
 	else if (strcmp(key, "launcher_background_id") == 0) {
 		int id = background_index_safe(atoi(value));
 		gtk_combo_box_set_active(GTK_COMBO_BOX(launcher_background), id);
+	}
+	else if (strcmp(key, "launcher_icon_background_id") == 0) {
+		int id = background_index_safe(atoi(value));
+		gtk_combo_box_set_active(GTK_COMBO_BOX(launcher_icon_background), id);
 	}
 	else if (strcmp(key, "launcher_icon_size") == 0) {
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_size), atoi(value));

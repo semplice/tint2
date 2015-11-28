@@ -97,10 +97,16 @@ void default_panel()
 	backgrounds = g_array_new(0, 0, sizeof(Background));
 
 	memset(&panel_config, 0, sizeof(Panel));
+	panel_config.mouse_over_alpha = 100;
+	panel_config.mouse_over_saturation = 0;
+	panel_config.mouse_over_brightness = 10;
+	panel_config.mouse_pressed_alpha = 100;
+	panel_config.mouse_pressed_saturation = 0;
+	panel_config.mouse_pressed_brightness = 0;
 
 	// append full transparency background
 	Background transparent_bg;
-	memset(&transparent_bg, 0, sizeof(Background));
+	init_background(&transparent_bg);
 	g_array_append_val(backgrounds, transparent_bg);
 }
 
@@ -140,6 +146,8 @@ void cleanup_panel()
 	backgrounds = NULL;
 	pango_font_description_free(panel_config.g_task.font_desc);
 	panel_config.g_task.font_desc = NULL;
+	pango_font_description_free(panel_config.taskbarname_font_desc);
+	panel_config.taskbarname_font_desc = NULL;
 }
 
 void init_panel()
@@ -215,14 +223,17 @@ void init_panel()
 		p->main_win = XCreateWindow(server.dsp, server.root_win, p->posx, p->posy, p->area.width, p->area.height, 0, server.depth, InputOutput, server.visual, mask, &att);
 
 		long event_mask = ExposureMask|ButtonPressMask|ButtonReleaseMask|ButtonMotionMask;
-		if (p->g_task.tooltip_enabled || p->clock.area._get_tooltip_text || (launcher_enabled && launcher_tooltip_enabled))
+		if (p->mouse_effects ||
+			p->g_task.tooltip_enabled ||
+			p->clock.area._get_tooltip_text ||
+			(launcher_enabled && launcher_tooltip_enabled))
 			event_mask |= PointerMotionMask|LeaveWindowMask;
 		if (panel_autohide)
 			event_mask |= LeaveWindowMask|EnterWindowMask;
 		XChangeWindowAttributes(server.dsp, p->main_win, CWEventMask, &(XSetWindowAttributes){.event_mask=event_mask});
 
 		if (!server.gc) {
-			XGCValues  gcv;
+			XGCValues gcv;
 			server.gc = XCreateGC(server.dsp, p->main_win, 0, &gcv);
 		}
 		//printf("panel %d : %d, %d, %d, %d\n", i, p->posx, p->posy, p->area.width, p->area.height);
@@ -356,16 +367,16 @@ int resize_panel(void *obj)
 
 			Taskbar *taskbar = &panel->taskbar[i];
 			GList *l;
-			for (l = taskbar->area.list; l; l = l->next) {
+			for (l = taskbar->area.children; l; l = l->next) {
 				Area *child = l->data;
 				if (!child->on_screen)
 					continue;
 				total_items++;
 			}
 			if (taskbarname_enabled) {
-				if (taskbar->area.list) {
+				if (taskbar->area.children) {
 					total_items--;
-					Area *name = taskbar->area.list->data;
+					Area *name = taskbar->area.children->data;
 					if (panel_horizontal) {
 						total_name_size += name->width;
 					} else {
@@ -390,7 +401,7 @@ int resize_panel(void *obj)
 
 				int requested_size = (2 * taskbar->area.bg->border.width) + (2 * taskbar->area.paddingxlr);
 				int items = 0;
-				GList *l = taskbar->area.list;
+				GList *l = taskbar->area.children;
 				if (taskbarname_enabled)
 					l = l->next;
 				for (; l; l = l->next) {
@@ -439,7 +450,7 @@ void update_strut(Panel* p)
 	int d3;
 	XGetGeometry(server.dsp, server.root_win, &d2, &d3, &d3, &screen_width, &screen_height, &d1, &d1);
 	Monitor monitor = server.monitor[p->monitor];
-	long   struts [12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+	long struts [12] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 	if (panel_horizontal) {
 		int height = p->area.height + p->marginy;
 		if (panel_strut_policy == STRUT_MINIMUM || (panel_strut_policy == STRUT_FOLLOW_SIZE && p->is_hidden))
@@ -484,32 +495,32 @@ void set_panel_items_order(Panel *p)
 {
 	int k, j;
 	
-	if (p->area.list) {
-		g_list_free(p->area.list);
-		p->area.list = 0;
+	if (p->area.children) {
+		g_list_free(p->area.children);
+		p->area.children = 0;
 	}
 
 	for (k=0 ; k < strlen(panel_items_order) ; k++) {
 		if (panel_items_order[k] == 'L') {
-			p->area.list = g_list_append(p->area.list, &p->launcher);
+			p->area.children = g_list_append(p->area.children, &p->launcher);
 			p->launcher.area.resize = 1;
 		}
 		if (panel_items_order[k] == 'T') {
 			for (j=0 ; j < p->nb_desktop ; j++)
-				p->area.list = g_list_append(p->area.list, &p->taskbar[j]);
+				p->area.children = g_list_append(p->area.children, &p->taskbar[j]);
 		}
 #ifdef ENABLE_BATTERY
 		if (panel_items_order[k] == 'B') 
-			p->area.list = g_list_append(p->area.list, &p->battery);
+			p->area.children = g_list_append(p->area.children, &p->battery);
 #endif
 		int i = p - panel1;
 		if (panel_items_order[k] == 'S' && systray_on_monitor(i, nb_panel)) {
-			p->area.list = g_list_append(p->area.list, &systray);
+			p->area.children = g_list_append(p->area.children, &systray);
 		}
 		if (panel_items_order[k] == 'C')
-			p->area.list = g_list_append(p->area.list, &p->clock);
+			p->area.children = g_list_append(p->area.children, &p->clock);
 		if (panel_items_order[k] == 'F')
-			p->area.list = g_list_append(p->area.list, &p->freespace);
+			p->area.children = g_list_append(p->area.children, &p->freespace);
 	}
 	init_rendering(&p->area, 0);
 }
@@ -608,7 +619,7 @@ void set_panel_background(Panel *p)
 		get_root_pixmap();
 		// copy background (server.root_pmap) in panel.area.pix
 		Window dummy;
-		int  x, y;
+		int x, y;
 		XTranslateCoordinates(server.dsp, p->main_win, server.root_win, 0, 0, &x, &y, &dummy);
 		if (panel_autohide && p->is_hidden) {
 			x -= xoff;
@@ -636,7 +647,7 @@ void set_panel_background(Panel *p)
 	// redraw panel's object
 	GList *l0;
 	Area *a;
-	for (l0 = p->area.list; l0 ; l0 = l0->next) {
+	for (l0 = p->area.children; l0 ; l0 = l0->next) {
 		a = l0->data;
 		set_redraw(a);
 	}
@@ -654,7 +665,7 @@ void set_panel_background(Panel *p)
 		}
 		tskbar->area.pix = 0;
 		tskbar->bar_name.area.pix = 0;
-		l0 = tskbar->area.list;
+		l0 = tskbar->area.children;
 		if (taskbarname_enabled) l0 = l0->next;
 		for (; l0 ; l0 = l0->next) {
 			set_task_redraw((Task *)l0->data);
@@ -706,7 +717,7 @@ Task *click_task (Panel *panel, int x, int y)
 	if ( (tskbar = click_taskbar(panel, x, y)) ) {
 		if (panel_horizontal) {
 			Task *tsk;
-			l0 = tskbar->area.list;
+			l0 = tskbar->area.children;
 			if (taskbarname_enabled) l0 = l0->next;
 			for (; l0 ; l0 = l0->next) {
 				tsk = l0->data;
@@ -717,7 +728,7 @@ Task *click_task (Panel *panel, int x, int y)
 		}
 		else {
 			Task *tsk;
-			l0 = tskbar->area.list;
+			l0 = tskbar->area.children;
 			if (taskbarname_enabled) l0 = l0->next;
 			for (; l0 ; l0 = l0->next) {
 				tsk = l0->data;
@@ -818,9 +829,9 @@ Area* click_area(Panel *panel, int x, int y)
 	Area* new_result = result;
 	do {
 		result = new_result;
-		GList* it = result->list;
+		GList* it = result->children;
 		while (it) {
-			Area* a = it->data;
+			Area* a = (Area*)it->data;
 			if (a->on_screen && x >= a->posx && x <= (a->posx + a->width)
 					&& y >= a->posy && y <= (a->posy + a->height)) {
 				new_result = a;

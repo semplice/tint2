@@ -14,6 +14,9 @@ extern GtkWidget *panel_width, *panel_height, *panel_margin_x, *panel_margin_y, 
 extern GtkWidget *panel_wm_menu, *panel_dock, *panel_autohide, *panel_autohide_show_time, *panel_autohide_hide_time, *panel_autohide_size;
 extern GtkWidget *panel_combo_strut_policy, *panel_combo_layer, *panel_combo_width_type, *panel_combo_height_type, *panel_combo_monitor;
 extern GtkWidget *panel_window_name, *disable_transparency;
+extern GtkWidget *panel_mouse_effects;
+extern GtkWidget *mouse_hover_icon_opacity, *mouse_hover_icon_saturation, *mouse_hover_icon_brightness;
+extern GtkWidget *mouse_pressed_icon_opacity, *mouse_pressed_icon_saturation, *mouse_pressed_icon_brightness;
 
 enum {
 	itemsColName = 0,
@@ -95,7 +98,9 @@ extern GtkWidget *clock_background;
 extern GtkWidget *battery_hide_if_higher, *battery_alert_if_lower, *battery_alert_cmd;
 extern GtkWidget *battery_padding_x, *battery_padding_y, *battery_font_line1, *battery_font_line2, *battery_font_color;
 extern GtkWidget *battery_background;
+extern GtkWidget *battery_tooltip;
 extern GtkWidget *battery_left_command, *battery_mclick_command, *battery_right_command, *battery_uwheel_command, *battery_dwheel_command;
+extern GtkWidget *ac_connected_cmd, *ac_disconnected_cmd;
 
 // systray
 extern GtkWidget *systray_icon_order, *systray_padding_x, *systray_padding_y, *systray_spacing;
@@ -125,7 +130,7 @@ extern GtkWidget *launcher_apps_dirs;
 extern GtkWidget *launcher_icon_size, *launcher_icon_theme, *launcher_padding_x, *launcher_padding_y, *launcher_spacing;
 extern GtkWidget *launcher_icon_opacity, *launcher_icon_saturation, *launcher_icon_brightness;
 extern GtkWidget *margin_x, *margin_y;
-extern GtkWidget *launcher_background;
+extern GtkWidget *launcher_background, *launcher_icon_background;
 extern GtkWidget *startup_notifications;
 extern IconThemeWrapper *icon_theme;
 extern GtkWidget *launcher_tooltip;
@@ -144,6 +149,15 @@ enum {
 	bgColBorderOpacity,
 	bgColBorderWidth,
 	bgColCornerRadius,
+	bgColText,
+	bgColFillColorOver,
+	bgColFillOpacityOver,
+	bgColBorderColorOver,
+	bgColBorderOpacityOver,
+	bgColFillColorPress,
+	bgColFillOpacityPress,
+	bgColBorderColorPress,
+	bgColBorderOpacityPress,
 	bgNumCols
 };
 
@@ -151,6 +165,10 @@ extern GtkListStore *backgrounds;
 extern GtkWidget *current_background,
 		  *background_fill_color,
 		  *background_border_color,
+		  *background_fill_color_over,
+		  *background_border_color_over,
+		  *background_fill_color_press,
+		  *background_border_color_press,
 		  *background_border_width,
 		  *background_corner_radius;
 

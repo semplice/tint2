@@ -70,6 +70,11 @@ char *snapshot_path;
 // detect if it's an old config file (==1)
 static int new_config_file;
 
+static int read_bg_color_hover;
+static int read_border_color_hover;
+static int read_bg_color_press;
+static int read_border_color_press;
+
 
 void default_config()
 {
@@ -205,10 +210,25 @@ void add_entry (char *key, char *value)
 	/* Background and border */
 	if (strcmp (key, "rounded") == 0) {
 		// 'rounded' is the first parameter => alloc a new background
+		if (backgrounds->len > 0) {
+			Background *bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+			if (!read_bg_color_hover)
+				memcpy(&bg->back_hover, &bg->back, sizeof(Color));
+			if (!read_border_color_hover)
+				memcpy(&bg->border_hover, &bg->border, sizeof(Color));
+			if (!read_bg_color_press)
+				memcpy(&bg->back_pressed, &bg->back_hover, sizeof(Color));
+			if (!read_border_color_press)
+				memcpy(&bg->border_pressed, &bg->border_hover, sizeof(Color));
+		}
 		Background bg;
-		memset(&bg, 0, sizeof(bg));
+		init_background(&bg);
 		bg.border.rounded = atoi(value);
 		g_array_append_val(backgrounds, bg);
+		read_bg_color_hover = 0;
+		read_border_color_hover = 0;
+		read_bg_color_press = 0;
+		read_border_color_press = 0;
 	}
 	else if (strcmp (key, "border_width") == 0) {
 		g_array_index(backgrounds, Background, backgrounds->len-1).border.width = atoi(value);
@@ -226,6 +246,38 @@ void add_entry (char *key, char *value)
 		get_color (value1, bg->border.color);
 		if (value2) bg->border.alpha = (atoi (value2) / 100.0);
 		else bg->border.alpha = 0.5;
+	}
+	else if (strcmp (key, "background_color_hover") == 0) {
+		Background* bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+		extract_values(value, &value1, &value2, &value3);
+		get_color (value1, bg->back_hover.color);
+		if (value2) bg->back_hover.alpha = (atoi (value2) / 100.0);
+		else bg->back_hover.alpha = 0.5;
+    read_bg_color_hover = 1;
+	}
+	else if (strcmp (key, "border_color_hover") == 0) {
+		Background* bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+		extract_values(value, &value1, &value2, &value3);
+		get_color (value1, bg->border_hover.color);
+		if (value2) bg->border_hover.alpha = (atoi (value2) / 100.0);
+		else bg->border_hover.alpha = 0.5;
+		read_border_color_hover = 1;
+	}
+	else if (strcmp (key, "background_color_pressed") == 0) {
+		Background* bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+		extract_values(value, &value1, &value2, &value3);
+		get_color (value1, bg->back_pressed.color);
+		if (value2) bg->back_pressed.alpha = (atoi (value2) / 100.0);
+		else bg->back_pressed.alpha = 0.5;
+		read_bg_color_press = 1;
+	}
+	else if (strcmp (key, "border_color_pressed") == 0) {
+		Background* bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+		extract_values(value, &value1, &value2, &value3);
+		get_color (value1, bg->border_pressed.color);
+		if (value2) bg->border_pressed.alpha = (atoi (value2) / 100.0);
+		else bg->border_pressed.alpha = 0.5;
+		read_border_color_press = 1;
 	}
 
 	/* Panel */
@@ -354,7 +406,7 @@ void add_entry (char *key, char *value)
 	else if (strcmp (key, "battery_low_status") == 0) {
 #ifdef ENABLE_BATTERY
 		battery_low_status = atoi(value);
-		if(battery_low_status < 0 || battery_low_status > 100)
+		if (battery_low_status < 0 || battery_low_status > 100)
 			battery_low_status = 0;
 #endif
 	}
@@ -392,6 +444,18 @@ void add_entry (char *key, char *value)
 #ifdef ENABLE_BATTERY
 		if (strlen(value) > 0)
 			battery_low_cmd = strdup (value);
+#endif
+	}
+	else if (strcmp (key, "ac_connected_cmd") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			ac_connected_cmd = strdup (value);
+#endif
+	}
+	else if (strcmp (key, "ac_disconnected_cmd") == 0) {
+#ifdef ENABLE_BATTERY
+		if (strlen(value) > 0)
+			ac_disconnected_cmd = strdup (value);
 #endif
 	}
 	else if (strcmp (key, "bat1_font") == 0) {
@@ -432,6 +496,11 @@ void add_entry (char *key, char *value)
 		percentage_hide = atoi (value);
 		if (percentage_hide == 0)
 			percentage_hide = 101;
+#endif
+	}
+	else if (strcmp (key, "battery_tooltip") == 0) {
+#ifdef ENABLE_BATTERY
+		battery_tooltip_enabled = atoi(value);
 #endif
 	}
 
@@ -564,7 +633,7 @@ void add_entry (char *key, char *value)
 		panel_config.g_taskbar.background_name[TASKBAR_ACTIVE] = &g_array_index(backgrounds, Background, id);
 	}
 	else if (strcmp (key, "taskbar_name_font") == 0) {
-		taskbarname_font_desc = pango_font_description_from_string (value);
+		panel_config.taskbarname_font_desc = pango_font_description_from_string(value);
 	}
 	else if (strcmp (key, "taskbar_name_font_color") == 0) {
 		extract_values(value, &value1, &value2, &value3);
@@ -730,6 +799,11 @@ void add_entry (char *key, char *value)
 		id = (id < backgrounds->len && id >= 0) ? id : 0;
 		panel_config.launcher.area.bg = &g_array_index(backgrounds, Background, id);
 	}
+	else if (strcmp (key, "launcher_icon_background_id") == 0) {
+		int id = atoi (value);
+		id = (id < backgrounds->len && id >= 0) ? id : 0;
+		launcher_icon_bg = &g_array_index(backgrounds, Background, id);
+	}
 	else if (strcmp(key, "launcher_icon_size") == 0) {
 		launcher_max_icon_size = atoi(value);
 	}
@@ -804,6 +878,21 @@ void add_entry (char *key, char *value)
 		get_action (value, &mouse_scroll_up);
 	else if (strcmp (key, "mouse_scroll_down") == 0)
 		get_action (value, &mouse_scroll_down);
+	else if (strcmp (key, "mouse_effects") == 0)
+		panel_config.mouse_effects = atoi(value);
+	else if (strcmp(key, "mouse_hover_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		panel_config.mouse_over_alpha = atoi(value1);
+		panel_config.mouse_over_saturation = atoi(value2);
+		panel_config.mouse_over_brightness = atoi(value3);
+	}
+	else if (strcmp(key, "mouse_pressed_icon_asb") == 0) {
+		extract_values(value, &value1, &value2, &value3);
+		panel_config.mouse_pressed_alpha = atoi(value1);
+		panel_config.mouse_pressed_saturation = atoi(value2);
+		panel_config.mouse_pressed_brightness = atoi(value3);
+	}
+
 
 	/* autohide options */
 	else if (strcmp(key, "autohide") == 0)
@@ -946,6 +1035,18 @@ int config_read_file (const char *path)
 		else 
 			panel_items_order = strdup("T");
 	}
+
+  if (backgrounds->len > 0) {
+    Background *bg = &g_array_index(backgrounds, Background, backgrounds->len-1);
+    if (!read_bg_color_hover)
+      memcpy(&bg->back_hover, &bg->back, sizeof(Color));
+    if (!read_border_color_hover)
+      memcpy(&bg->border_hover, &bg->border, sizeof(Color));
+    if (!read_bg_color_press)
+	  memcpy(&bg->back_pressed, &bg->back_hover, sizeof(Color));
+    if (!read_border_color_press)
+	  memcpy(&bg->border_pressed, &bg->border_hover, sizeof(Color));
+  }
 
 	return 1;
 }
