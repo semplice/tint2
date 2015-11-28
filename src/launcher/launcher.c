@@ -32,11 +32,6 @@
 #include <glib/gstdio.h>
 #include <gdk-pixbuf/gdk-pixbuf.h>
 #include <sys/types.h>
-#include <sys/wait.h>
-
-#ifdef HAVE_RSVG
-#include <librsvg/rsvg.h>
-#endif
 
 #include "window.h"
 #include "server.h"
@@ -58,6 +53,7 @@ char *icon_theme_name_xsettings;
 int launcher_icon_theme_override;
 XSettingsClient *xsettings_client;
 int startup_notifications;
+Background *launcher_icon_bg;
 
 Imlib_Image scale_icon(Imlib_Image original, int icon_size);
 void free_icon(Imlib_Image icon);
@@ -75,6 +71,7 @@ void default_launcher()
 	launcher_icon_theme_override = 0;
 	xsettings_client = NULL;
 	startup_notifications = 0;
+	launcher_icon_bg = NULL;
 }
 
 
@@ -101,6 +98,9 @@ void init_launcher_panel(void *p)
 	launcher->area.redraw = 1;
 	if (!launcher->area.bg)
 		launcher->area.bg = &g_array_index(backgrounds, Background, 0);
+
+	if (!launcher_icon_bg)
+		launcher_icon_bg = &g_array_index(backgrounds, Background, 0);
 
 	// check consistency
 	if (launcher->list_apps == NULL)
@@ -153,6 +153,8 @@ void cleanup_launcher_theme(Launcher *launcher)
 		LauncherIcon *launcherIcon = (LauncherIcon*)l->data;
 		if (launcherIcon) {
 			free_icon(launcherIcon->image);
+			free_icon(launcherIcon->image_hover);
+			free_icon(launcherIcon->image_pressed);
 			free(launcherIcon->icon_name);
 			free(launcherIcon->icon_path);
 			free(launcherIcon->cmd);
@@ -197,49 +199,18 @@ int resize_launcher(void *obj)
 			if (!new_icon_path) {
 				// Draw a blank icon
 				free_icon(launcherIcon->image);
+				free_icon(launcherIcon->image_hover);
+				free_icon(launcherIcon->image_pressed);
 				launcherIcon->image = NULL;
 				continue;
 			}
 
 			// Free the old files
 			free_icon(launcherIcon->image);
-			launcherIcon->image = NULL;
-			// Load the new file and scale
-			launcherIcon->image = imlib_load_image_immediately(new_icon_path);
-#ifdef HAVE_RSVG
-			if (!launcherIcon->image && g_str_has_suffix(new_icon_path, ".svg")) {
-				char suffix[128];
-				sprintf(suffix, "tmpicon-%d.png", getpid());
-				// We fork here because librsvg allocates memory like crazy
-				pid_t pid = fork();
-				if (pid == 0) {
-					// Child
-					GError* err = NULL;
-					RsvgHandle* svg = rsvg_handle_new_from_file(new_icon_path, &err);
-
-					if (err != NULL) {
-						fprintf(stderr, "Could not load svg image!: %s", err->message);
-						g_error_free(err);
-						launcherIcon->image = NULL;
-					} else {
-						gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
-						GdkPixbuf *pixbuf = rsvg_handle_get_pixbuf(svg);
-						gdk_pixbuf_save(pixbuf, name, "png", NULL, NULL);
-					}
-					exit(0);
-				} else {
-					// Parent
-					waitpid(pid, 0, 0);
-					gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
-					launcherIcon->image = imlib_load_image_immediately_without_cache(name);
-					g_remove(name);
-					g_free(name);
-				}
-			} else
-#endif
-			{
-				launcherIcon->image = imlib_load_image_immediately(new_icon_path);
-			}
+			free_icon(launcherIcon->image_hover);
+			free_icon(launcherIcon->image_pressed);
+			// Load the new file
+			launcherIcon->image = load_image(new_icon_path, 1);
 			// On loading error, fallback to default
 			if (!launcherIcon->image) {
 				free(new_icon_path);
@@ -252,7 +223,7 @@ int resize_launcher(void *obj)
 				// Loading default icon failed, draw a blank icon
 				free(new_icon_path);
 			} else {
-				// Loaded icon successfully
+				// Loaded icon successfully, rescale it
 				Imlib_Image original = launcherIcon->image;
 				launcherIcon->image = scale_icon(launcherIcon->image, launcherIcon->icon_size);
 				free_icon(original);
@@ -260,6 +231,11 @@ int resize_launcher(void *obj)
 				launcherIcon->icon_path = new_icon_path;
 				fprintf(stderr, "launcher.c %d: Using icon %s\n", __LINE__, launcherIcon->icon_path);
 			}
+		}
+
+		if (panel_config.mouse_effects) {
+			launcherIcon->image_hover = adjust_icon(launcherIcon->image, panel_config.mouse_over_alpha, panel_config.mouse_over_saturation, panel_config.mouse_over_brightness);
+			launcherIcon->image_pressed = adjust_icon(launcherIcon->image, panel_config.mouse_pressed_alpha, panel_config.mouse_pressed_saturation, panel_config.mouse_pressed_brightness);
 		}
 	}
 	
@@ -347,18 +323,29 @@ void launcher_icon_on_change_layout(void *obj)
 	launcherIcon->area.height = launcherIcon->icon_size;
 }
 
-const char* launcher_icon_get_tooltip_text(void *obj)
+char* launcher_icon_get_tooltip_text(void *obj)
 {
 	LauncherIcon *launcherIcon = (LauncherIcon*)obj;
-	return launcherIcon->icon_tooltip;
+	return strdup(launcherIcon->icon_tooltip);
 }
 
 void draw_launcher_icon(void *obj, cairo_t *c)
 {
 	LauncherIcon *launcherIcon = (LauncherIcon*)obj;
 
+	Imlib_Image image;
 	// Render
-	imlib_context_set_image(launcherIcon->image);
+	if (panel_config.mouse_effects) {
+		if (launcherIcon->area.mouse_state == MOUSE_OVER)
+			image = launcherIcon->image_hover ? launcherIcon->image_hover : launcherIcon->image;
+		else if (launcherIcon->area.mouse_state == MOUSE_DOWN)
+			image = launcherIcon->image_pressed ? launcherIcon->image_pressed : launcherIcon->image;
+		else
+			image = launcherIcon->image;
+	} else {
+		 image = launcherIcon->image;
+	}
+	imlib_context_set_image(image);
 	render_image(launcherIcon->area.pix, 0, 0);
 }
 
@@ -466,7 +453,9 @@ void launcher_load_icons(Launcher *launcher)
 			launcherIcon->area._resize = NULL;
 			launcherIcon->area.resize = 0;
 			launcherIcon->area.redraw = 1;
-			launcherIcon->area.bg = &g_array_index(backgrounds, Background, 0);
+			launcherIcon->area.mouse_over_effect = 1;
+			launcherIcon->area.mouse_press_effect = 1;
+			launcherIcon->area.bg = launcher_icon_bg;
 			launcherIcon->area.on_screen = 1;
 			launcherIcon->area._on_change_layout = launcher_icon_on_change_layout;
 			if (launcher_tooltip_enabled) {

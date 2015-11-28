@@ -99,7 +99,7 @@ void cleanup_taskbar()
 			}
 			free_area(&tskbar->area);
 			// remove taskbar from the panel
-			panel->area.list = g_list_remove(panel->area.list, tskbar);
+			remove_area(tskbar);
 		}
 		if (panel->taskbar) {
 			free(panel->taskbar);
@@ -232,8 +232,8 @@ void init_taskbar_panel(void *p)
 	}
 
 	// compute vertical position : text and icon
-	int height_ink, height;
-	get_text_size(panel->g_task.font_desc, &height_ink, &height, panel->area.height, "TAjpg", 5);
+	int height_ink, height, width;
+	get_text_size2(panel->g_task.font_desc, &height_ink, &height, &width, panel->area.height, panel->area.width, "TAjpg", 5, PANGO_WRAP_WORD_CHAR, PANGO_ELLIPSIZE_END);
 
 	if (!panel->g_task.maximum_width && panel_horizontal)
 		panel->g_task.maximum_width = server.monitor[panel->monitor].width;
@@ -337,7 +337,7 @@ int resize_taskbar(void *obj)
 		resize_by_layout(obj, panel->g_task.maximum_width);
 		
 		text_width = panel->g_task.maximum_width;
-		GList *l = taskbar->area.list;
+		GList *l = taskbar->area.children;
 		if (taskbarname_enabled) l = l->next;
 		for (; l != NULL; l = l->next) {
 			if (((Task *)l->data)->area.on_screen) {
@@ -377,7 +377,9 @@ void set_taskbar_state(Taskbar *tskbar, int state)
 	tskbar->area.pix = tskbar->state_pix[state];
 	if (taskbarname_enabled) {
 		tskbar->bar_name.area.bg = panel1[0].g_taskbar.background_name[state];
-		tskbar->bar_name.area.pix = tskbar->bar_name.state_pix[state];
+		if (!panel_config.mouse_effects) {
+			tskbar->bar_name.area.pix = tskbar->bar_name.state_pix[state];
+		}
 	}
 	if (panel_mode != MULTI_DESKTOP) { 
 		if (state == TASKBAR_NORMAL)
@@ -388,10 +390,16 @@ void set_taskbar_state(Taskbar *tskbar, int state)
 	if (tskbar->area.on_screen == 1) {
 		if (tskbar->state_pix[state] == 0)
 			tskbar->area.redraw = 1;
-		if (taskbarname_enabled && tskbar->bar_name.state_pix[state] == 0)
-			tskbar->bar_name.area.redraw = 1;
+		if (taskbarname_enabled) {
+			if (!panel_config.mouse_effects) {
+				if (tskbar->bar_name.state_pix[state] == 0)
+					tskbar->bar_name.area.redraw = 1;
+			} else {
+				tskbar->bar_name.area.redraw = 1;
+			}
+		}
 		if (panel_mode == MULTI_DESKTOP && panel1[0].g_taskbar.background[TASKBAR_NORMAL] != panel1[0].g_taskbar.background[TASKBAR_ACTIVE]) {
-			GList *l = tskbar->area.list;
+			GList *l = tskbar->area.children;
 			if (taskbarname_enabled) l = l->next;
 			for ( ; l ; l = l->next)
 				set_task_redraw(l->data);
@@ -426,9 +434,9 @@ gint compare_tasks_trivial(Task *a, Task *b, Taskbar *taskbar)
 	if (a == b)
 		return 0;
 	if (taskbarname_enabled) {
-		if (a == taskbar->area.list->data)
+		if (a == taskbar->area.children->data)
 			return -1;
-		if (b == taskbar->area.list->data)
+		if (b == taskbar->area.children->data)
 			return 1;
 	}
 	return NONTRIVIAL;
@@ -515,7 +523,7 @@ int taskbar_needs_sort(Taskbar *taskbar)
 		return 0;
 
 	GList *i, *j;
-	for (i = taskbar->area.list, j = i ? i->next : NULL; i && j; i = i->next, j = j->next) {
+	for (i = taskbar->area.children, j = i ? i->next : NULL; i && j; i = i->next, j = j->next) {
 		if (compare_tasks(i->data, j->data, taskbar) > 0) {
 			return 1;
 		}
@@ -531,7 +539,7 @@ void sort_tasks(Taskbar *taskbar)
 	if (!taskbar_needs_sort(taskbar)) {
 		return;
 	}
-	taskbar->area.list = g_list_sort_with_data(taskbar->area.list, (GCompareDataFunc)compare_tasks, taskbar);
+	taskbar->area.children = g_list_sort_with_data(taskbar->area.children, (GCompareDataFunc)compare_tasks, taskbar);
 	taskbar->area.resize = 1;
 	panel_refresh = 1;
 	((Panel*)taskbar->area.panel)->area.resize = 1;

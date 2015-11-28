@@ -38,10 +38,10 @@
 timeout* urgent_timeout;
 GSList* urgent_list;
 
-const char* task_get_tooltip(void* obj)
+char* task_get_tooltip(void* obj)
 {
 	Task* t = obj;
-	return t->title;
+	return strdup(t->title);
 }
 
 
@@ -61,6 +61,9 @@ Task *add_task (Window win)
 	else monitor = 0;
 
 	Task new_tsk;
+	memset(&new_tsk, 0, sizeof(new_tsk));
+	new_tsk.area.mouse_over_effect = 1;
+	new_tsk.area.mouse_press_effect = 1;
 	new_tsk.win = win;
 	new_tsk.desktop = window_get_desktop (win);
 	new_tsk.area.panel = &panel1[monitor];
@@ -91,6 +94,8 @@ Task *add_task (Window win)
 		new_tsk2 = calloc(1, sizeof(Task));
 		memcpy(&new_tsk2->area, &panel1[monitor].g_task.area, sizeof(Area));
 		new_tsk2->area.parent = tskbar;
+		new_tsk2->area.mouse_over_effect = 1;
+		new_tsk2->area.mouse_press_effect = 1;
 		new_tsk2->win = new_tsk.win;
 		new_tsk2->desktop = new_tsk.desktop;
 		new_tsk2->win_x = new_tsk.win_x;
@@ -107,11 +112,13 @@ Task *add_task (Window win)
 			new_tsk2->area._get_tooltip_text = task_get_tooltip;
 		for (k=0; k<TASK_STATE_COUNT; ++k) {
 			new_tsk2->icon[k] = new_tsk.icon[k];
+			new_tsk2->icon_hover[k] = new_tsk.icon_hover[k];
+			new_tsk2->icon_press[k] = new_tsk.icon_press[k];
 			new_tsk2->state_pix[k] = 0;
 		}
 		new_tsk2->icon_width = new_tsk.icon_width;
 		new_tsk2->icon_height = new_tsk.icon_height;
-		tskbar->area.list = g_list_append(tskbar->area.list, new_tsk2);
+		tskbar->area.children = g_list_append(tskbar->area.children, new_tsk2);
 		tskbar->area.resize = 1;
 		g_ptr_array_add(task_group, new_tsk2);
 		//printf("add_task panel %d, desktop %d, task %s\n", i, j, new_tsk2->title);
@@ -158,22 +165,29 @@ void remove_task (Task *tsk)
 			imlib_context_set_image(tsk->icon[k]);
 			imlib_free_image();
 			tsk->icon[k] = 0;
-			if (tsk->state_pix[k]) XFreePixmap(server.dsp, tsk->state_pix[k]);
 		}
+		if (tsk->icon_hover[k]) {
+			imlib_context_set_image(tsk->icon_hover[k]);
+			imlib_free_image();
+			tsk->icon_hover[k] = 0;
+		}
+		if (tsk->icon_press[k]) {
+			imlib_context_set_image(tsk->icon_press[k]);
+			imlib_free_image();
+			tsk->icon_press[k] = 0;
+		}
+		if (tsk->state_pix[k]) XFreePixmap(server.dsp, tsk->state_pix[k]);
 	}
 
 	int i;
 	Task *tsk2;
-	Taskbar *tskbar;
 	GPtrArray* task_group = g_hash_table_lookup(win_to_task_table, &win);
 	for (i=0; i<task_group->len; ++i) {
 		tsk2 = g_ptr_array_index(task_group, i);
-		tskbar = tsk2->area.parent;
-		tskbar->area.list = g_list_remove(tskbar->area.list, tsk2);
-		tskbar->area.resize = 1;
 		if (tsk2 == task_active) task_active = 0;
 		if (tsk2 == task_drag) task_drag = 0;
 		if (g_slist_find(urgent_list, tsk2)) del_urgent(tsk2);
+		remove_area(tsk2);
 		free(tsk2);
 	}
 	g_hash_table_remove(win_to_task_table, &win);
@@ -258,7 +272,7 @@ void get_icon (Task *tsk)
 		DATA32 icon_data[w * h];
 		int length = w * h;
 		for (i = 0; i < length; ++i)
-			icon_data[i] =  tmp_data[i];
+			icon_data[i] = tmp_data[i];
 		img = imlib_create_image_using_copied_data (w, h, icon_data);
 #else
 		img = imlib_create_image_using_data (w, h, (DATA32*)tmp_data);
@@ -271,7 +285,7 @@ void get_icon (Task *tsk)
 			if (hints->flags & IconPixmapHint && hints->icon_pixmap != 0) {
 				// get width, height and depth for the pixmap
 				Window root;
-				int  icon_x, icon_y;
+				int icon_x, icon_y;
 				uint border_width, bpp;
 				uint w, h;
 
@@ -309,6 +323,10 @@ void get_icon (Task *tsk)
 			adjust_asb(data32, tsk->icon_width, tsk->icon_height, panel->g_task.alpha[k], (float)panel->g_task.saturation[k]/100, (float)panel->g_task.brightness[k]/100);
 			imlib_image_put_back_data(data32);
 		}
+		if (panel_config.mouse_effects) {
+			tsk->icon_hover[k] = adjust_icon(tsk->icon[k], panel_config.mouse_over_alpha, panel_config.mouse_over_saturation, panel_config.mouse_over_brightness);
+			tsk->icon_press[k] = adjust_icon(tsk->icon[k], panel_config.mouse_pressed_alpha, panel_config.mouse_pressed_saturation, panel_config.mouse_pressed_brightness);
+		}
 	}
 	imlib_context_set_image(orig_image);
 	imlib_free_image();
@@ -325,8 +343,11 @@ void get_icon (Task *tsk)
 			tsk2->icon_width = tsk->icon_width;
 			tsk2->icon_height = tsk->icon_height;
 			int k;
-			for (k=0; k<TASK_STATE_COUNT; ++k)
+			for (k=0; k<TASK_STATE_COUNT; ++k) {
 				tsk2->icon[k] = tsk->icon[k];
+				tsk2->icon_hover[k] = tsk->icon_hover[k];
+				tsk2->icon_press[k] = tsk->icon_press[k];
+			}
 			set_task_redraw(tsk2);
 		}
 	}
@@ -349,7 +370,21 @@ void draw_task_icon (Task *tsk, int text_width)
 	else pos_x = panel->g_task.area.paddingxlr + tsk->area.bg->border.width;
 
 	// Render
-	imlib_context_set_image (tsk->icon[tsk->current_state]);
+
+	Imlib_Image image;
+	// Render
+	if (panel_config.mouse_effects) {
+		if (tsk->area.mouse_state == MOUSE_OVER)
+			image = tsk->icon_hover[tsk->current_state];
+		else if (tsk->area.mouse_state == MOUSE_DOWN)
+			image = tsk->icon_press[tsk->current_state];
+		else
+			image = tsk->icon[tsk->current_state];
+	} else {
+		 image = tsk->icon[tsk->current_state];
+	}
+
+	imlib_context_set_image(image);
 	render_image(tsk->area.pix, pos_x, panel->g_task.icon_posy);
 }
 
@@ -357,7 +392,8 @@ void draw_task_icon (Task *tsk, int text_width)
 void draw_task (void *obj, cairo_t *c)
 {
 	Task *tsk = obj;
-	tsk->state_pix[tsk->current_state] = tsk->area.pix;
+	if (!panel_config.mouse_effects)
+		tsk->state_pix[tsk->current_state] = tsk->area.pix;
 	PangoLayout *layout;
 	Color *config_text;
 	int width=0, height;
@@ -420,7 +456,7 @@ Task *find_active_task(Task *current_task, Task *active_task)
 
 	Taskbar* tskbar = current_task->area.parent;
 
-	GList *l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.children;
 	if (taskbarname_enabled)
 		l0 = l0->next;
 	for (; l0 ; l0 = l0->next) {
@@ -439,7 +475,7 @@ Task *next_task(Task *tsk)
 
 	Taskbar* tskbar = tsk->area.parent;
 
-	GList *l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.children;
 	if (taskbarname_enabled) l0 = l0->next;
 	GList *lfirst_tsk = l0;
 	for (; l0 ; l0 = l0->next) {
@@ -463,7 +499,7 @@ Task *prev_task(Task *tsk)
 	Taskbar* tskbar = tsk->area.parent;
 
 	tsk2 = 0;
-	GList *l0 = tskbar->area.list;
+	GList *l0 = tskbar->area.children;
 	if (taskbarname_enabled) l0 = l0->next;
 	GList *lfirst_tsk = l0;
 	for (; l0 ; l0 = l0->next) {
@@ -516,9 +552,13 @@ void set_task_state(Task *tsk, int state)
 				Task* tsk1 = g_ptr_array_index(task_group, i);
 				tsk1->current_state = state;
 				tsk1->area.bg = panel1[0].g_task.background[state];
-				tsk1->area.pix = tsk1->state_pix[state];
-				if (tsk1->state_pix[state] == 0)
+				if (!panel_config.mouse_effects) {
+					tsk1->area.pix = tsk1->state_pix[state];
+					if (!tsk1->area.pix)
+						tsk1->area.redraw = 1;
+				} else {
 					tsk1->area.redraw = 1;
+				}
 				if (state == TASK_ACTIVE && g_slist_find(urgent_list, tsk1))
 					del_urgent(tsk1);
 				int hide = 0;

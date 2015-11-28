@@ -7,6 +7,9 @@ option( ENABLE_EXAMPLES "Install additional tin2rc examples" ON )
 option( ENABLE_RSVG "Rsvg support (launcher only)" ON )
 option( ENABLE_SN "Startup notification support" ON )
 option( ENABLE_ASAN "Build tint2 with AddressSanitizer" OFF )
+if( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
+  option( ENABLE_UEVENT "Kernel event handling support" ON )
+endif( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
 
 include( FindPkgConfig )
 include( CheckLibraryExists )
@@ -78,7 +81,20 @@ set( SOURCES src/config.c
              src/util/window.c )
 
 if( ENABLE_BATTERY )
-  set( SOURCES ${SOURCES} src/battery/battery.c )
+  set( SOURCES ${SOURCES} src/battery/battery.c)
+
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set( SOURCES ${SOURCES} src/battery/linux.c)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
+    set( SOURCES ${SOURCES} src/battery/freebsd.c)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+    set( SOURCES ${SOURCES} src/battery/openbsd.c)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "NetBSD")
+    set( SOURCES ${SOURCES} src/battery/openbsd.c)
+  else(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    set( SOURCES ${SOURCES} src/battery/dummy.c)
+  endif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+
   add_definitions( -DENABLE_BATTERY )
 endif( ENABLE_BATTERY )
 
@@ -97,6 +113,11 @@ if( ENABLE_SN )
     message( FATAL_ERROR "Startup notification support enabled yet dependency not fulfilled: libstartup-notification-1.0" )
   endif( SN_FOUND )
 endif( ENABLE_SN)
+
+if( ENABLE_UEVENT )
+  add_definitions( -DENABLE_UEVENT )
+  set( SOURCES ${SOURCES} src/util/uevent.c)
+endif( ENABLE_UEVENT )
 
 if( ENABLE_TINT2CONF )
   add_definitions( -DHAVE_VERSION_H )
@@ -135,9 +156,13 @@ target_link_libraries( tint2 ${X11_LIBRARIES}
                              ${CAIRO_LIBRARIES}
                              ${GLIB2_LIBRARIES}
                              ${GOBJECT2_LIBRARIES}
-                             ${IMLIB2_LIBRARIES}
-                             ${RSVG_LIBRARIES}
-                             ${SN_LIBRARIES} )
+                             ${IMLIB2_LIBRARIES} )
+if( ENABLE_RSVG )
+  target_link_libraries( tint2 ${RSVG_LIBRARIES} )
+endif( ENABLE_RSVG )
+if( ENABLE_SN )
+  target_link_libraries( tint2 ${SN_LIBRARIES} )
+endif( ENABLE_SN )
 if( RT_LIBRARY )
   target_link_libraries( tint2 ${RT_LIBRARY} )
 endif( RT_LIBRARY )

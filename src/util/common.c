@@ -28,9 +28,14 @@
 #include <math.h>
 #include <unistd.h>
 #include <glib.h>
+#include <glib/gstdio.h>
 #include "common.h"
 #include "../server.h"
+#include <sys/wait.h>
 
+#ifdef HAVE_RSVG
+#include <librsvg/rsvg.h>
+#endif
 
 
 void copy_file(const char *pathSrc, const char *pathDest)
@@ -454,4 +459,68 @@ void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color
 	pango_cairo_update_layout (c, layout);
 	cairo_move_to (c, posx, posy);
 	pango_cairo_show_layout (c, layout);
+}
+
+Imlib_Image load_image(const char *path, int cached)
+{
+	Imlib_Image image;
+#ifdef HAVE_RSVG
+	if (cached) {
+		image = imlib_load_image_immediately(path);
+	} else {
+		image = imlib_load_image_immediately_without_cache(path);
+	}
+	if (!image && g_str_has_suffix(path, ".svg")) {
+		char suffix[128];
+		sprintf(suffix, "tmpimage-%d.png", getpid());
+		// We fork here because librsvg allocates memory like crazy
+		pid_t pid = fork();
+		if (pid == 0) {
+			// Child
+			GError* err = NULL;
+			RsvgHandle* svg = rsvg_handle_new_from_file(path, &err);
+
+			if (err != NULL) {
+				fprintf(stderr, "Could not load svg image!: %s", err->message);
+				g_error_free(err);
+			} else {
+				gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
+				GdkPixbuf *pixbuf = rsvg_handle_get_pixbuf(svg);
+				gdk_pixbuf_save(pixbuf, name, "png", NULL, NULL);
+			}
+			exit(0);
+		} else {
+			// Parent
+			waitpid(pid, 0, 0);
+			gchar *name = g_build_filename(g_get_user_config_dir(), "tint2", suffix, NULL);
+			image = imlib_load_image_immediately_without_cache(name);
+			g_remove(name);
+			g_free(name);
+		}
+	} else
+#endif
+	{
+		if (cached) {
+			image = imlib_load_image_immediately(path);
+		} else {
+			image = imlib_load_image_immediately_without_cache(path);
+		}
+	}
+	return image;
+}
+
+Imlib_Image adjust_icon(Imlib_Image original, int alpha, int saturation, int brightness)
+{
+	if (!original)
+		return NULL;
+
+	imlib_context_set_image(original);
+	Imlib_Image copy = imlib_clone_image();
+
+	imlib_context_set_image(copy);
+	imlib_image_set_has_alpha(1);
+	DATA32* data = imlib_image_get_data();
+	adjust_asb(data, imlib_image_get_width(), imlib_image_get_height(), alpha, (float)saturation/100, (float)brightness/100);
+	imlib_image_put_back_data(data);
+	return copy;
 }

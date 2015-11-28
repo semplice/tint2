@@ -20,15 +20,15 @@
 
 /*
 void fxfree(void** ptr){
-  if(*ptr){
+  if (*ptr){
     free(*ptr);
     *ptr=NULL;
     }
   }
 FXint fxmalloc(void** ptr,unsigned long size){
   *ptr=NULL;
-  if(size!=0){
-    if((*ptr=malloc(size))==NULL) return FALSE;
+  if (size!=0){
+    if ((*ptr=malloc(size))==NULL) return FALSE;
     }
   return TRUE;
   }
@@ -73,6 +73,10 @@ int imageEmpty(DATA32* data, int w, int h);
 void render_image(Drawable d, int x, int y);
 
 void draw_text(PangoLayout *layout, cairo_t *c, int posx, int posy, Color *color, int font_shadow);
+
+Imlib_Image load_image(const char *path, int cached);
+
+Imlib_Image adjust_icon(Imlib_Image original, int alpha, int saturation, int brightness);
 
 #endif
 

@@ -91,6 +91,14 @@ typedef struct {
 	// location of the panel (monitor number)
 	int monitor;
 	int font_shadow;
+	int mouse_effects;
+	// Mouse effects for icons
+	int mouse_over_alpha;
+	int mouse_over_saturation;
+	int mouse_over_brightness;
+	int mouse_pressed_alpha;
+	int mouse_pressed_saturation;
+	int mouse_pressed_brightness;
 
 	// --------------------------------------------------
 	// task and taskbar parameter per panel
@@ -104,6 +112,7 @@ typedef struct {
 	// while panel->area.list is used to loop over all panel's objects
 	Taskbar *taskbar;
 	int  nb_desktop;
+	PangoFontDescription *taskbarname_font_desc;
 
 	// --------------------------------------------------
 	// clock

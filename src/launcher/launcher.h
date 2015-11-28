@@ -24,6 +24,8 @@ typedef struct LauncherIcon {
 	// always start with area
 	Area area;
 	Imlib_Image image;
+	Imlib_Image image_hover;
+	Imlib_Image image_pressed;
 	char *cmd;
 	char *icon_name;
 	char *icon_path;
@@ -44,6 +46,7 @@ extern char *icon_theme_name_config;
 extern int launcher_icon_theme_override;
 extern XSettingsClient *xsettings_client;
 extern int startup_notifications;
+extern Background *launcher_icon_bg;
 
 // default global data
 void default_launcher();

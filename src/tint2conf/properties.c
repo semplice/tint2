@@ -34,6 +34,9 @@ GtkWidget *panel_width, *panel_height, *panel_margin_x, *panel_margin_y, *panel_
 GtkWidget *panel_wm_menu, *panel_dock, *panel_autohide, *panel_autohide_show_time, *panel_autohide_hide_time, *panel_autohide_size;
 GtkWidget *panel_combo_strut_policy, *panel_combo_layer, *panel_combo_width_type, *panel_combo_height_type, *panel_combo_monitor;
 GtkWidget *panel_window_name, *disable_transparency;
+GtkWidget *panel_mouse_effects;
+GtkWidget *mouse_hover_icon_opacity, *mouse_hover_icon_saturation, *mouse_hover_icon_brightness;
+GtkWidget *mouse_pressed_icon_opacity, *mouse_pressed_icon_saturation, *mouse_pressed_icon_brightness;
 
 GtkListStore *panel_items, *all_items;
 GtkWidget *panel_items_view, *all_items_view;
@@ -92,7 +95,9 @@ GtkWidget *clock_background;
 GtkWidget *battery_hide_if_higher, *battery_alert_if_lower, *battery_alert_cmd;
 GtkWidget *battery_padding_x, *battery_padding_y, *battery_font_line1, *battery_font_line2, *battery_font_color;
 GtkWidget *battery_background;
+GtkWidget *battery_tooltip;
 GtkWidget *battery_left_command, *battery_mclick_command, *battery_right_command, *battery_uwheel_command, *battery_dwheel_command;
+GtkWidget *ac_connected_cmd, *ac_disconnected_cmd;
 
 // systray
 GtkWidget *systray_icon_order, *systray_padding_x, *systray_padding_y, *systray_spacing;
@@ -114,7 +119,7 @@ GtkWidget *launcher_apps_dirs;
 GtkWidget *launcher_icon_size, *launcher_icon_theme, *launcher_padding_x, *launcher_padding_y, *launcher_spacing;
 GtkWidget *launcher_icon_opacity, *launcher_icon_saturation, *launcher_icon_brightness;
 GtkWidget *margin_x, *margin_y;
-GtkWidget *launcher_background;
+GtkWidget *launcher_background, *launcher_icon_background;
 GtkWidget *startup_notifications;
 IconThemeWrapper *icon_theme;
 GtkWidget *launcher_tooltip;
@@ -124,6 +129,10 @@ GtkListStore *backgrounds;
 GtkWidget *current_background,
 		  *background_fill_color,
 		  *background_border_color,
+		  *background_fill_color_over,
+		  *background_border_color_over,
+		  *background_fill_color_press,
+		  *background_border_color_press,
 		  *background_border_width,
 		  *background_corner_radius;
 
@@ -139,6 +148,7 @@ void background_delete(GtkWidget *widget, gpointer data);
 void background_update_image(int index);
 void background_update(GtkWidget *widget, gpointer data);
 void current_background_changed(GtkWidget *widget, gpointer data);
+void background_combo_changed(GtkWidget *widget, gpointer data);
 void create_panel(GtkWidget *parent);
 void create_panel_items(GtkWidget *parent);
 void create_launcher(GtkWidget *parent);
@@ -149,6 +159,7 @@ void create_taskbar(GtkWidget *parent);
 void create_task(GtkWidget *parent);
 void create_task_status(GtkWidget *notebook,
 						char *name,
+						char *text,
 						GtkWidget **task_status_color,
 						GtkWidget **task_status_color_set,
 						GtkWidget **task_status_icon_opacity,
@@ -165,6 +176,11 @@ void panel_add_item(GtkWidget *widget, gpointer data);
 void panel_remove_item(GtkWidget *widget, gpointer data);
 void panel_move_item_down(GtkWidget *widget, gpointer data);
 void panel_move_item_up(GtkWidget *widget, gpointer data);
+
+static gint compare_strings(gconstpointer a, gconstpointer b)
+{
+   return strnatcasecmp((const char*)a, (const char*)b);
+}
 
 void applyClicked(GtkWidget *widget, gpointer data)
 {
@@ -267,13 +283,6 @@ GtkWidget *create_properties()
 	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), addScrollBarToWidget(page_panel_items), label);
 	create_panel_items(page_panel_items);
 
-	label = gtk_label_new(_("Launcher"));
-	gtk_widget_show(label);
-	page_launcher = gtk_vbox_new(FALSE, DEFAULT_HOR_SPACING);
-	gtk_container_set_border_width(GTK_CONTAINER(page_launcher), 10);
-	gtk_widget_show(page_launcher);
-	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), addScrollBarToWidget(page_launcher), label);
-	create_launcher(page_launcher);
 
 	label = gtk_label_new(_("Taskbar"));
 	gtk_widget_show(label);
@@ -290,6 +299,14 @@ GtkWidget *create_properties()
 	gtk_widget_show(page_task);
 	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), addScrollBarToWidget(page_task), label);
 	create_task(page_task);
+
+	label = gtk_label_new(_("Launcher"));
+	gtk_widget_show(label);
+	page_launcher = gtk_vbox_new(FALSE, DEFAULT_HOR_SPACING);
+	gtk_container_set_border_width(GTK_CONTAINER(page_launcher), 10);
+	gtk_widget_show(page_launcher);
+	gtk_notebook_append_page(GTK_NOTEBOOK(notebook), addScrollBarToWidget(page_launcher), label);
+	create_launcher(page_launcher);
 
 	label = gtk_label_new(_("Clock"));
 	gtk_widget_show(label);
@@ -335,13 +352,92 @@ void change_paragraph(GtkWidget *widget)
 	gtk_container_set_border_width(GTK_CONTAINER(hbox), 6);
 }
 
-GtkWidget *create_background_combo()
+GtkWidget *create_background_combo(const char *label)
 {
 	GtkWidget *combo = gtk_combo_box_new_with_model(GTK_TREE_MODEL(backgrounds));
 	GtkCellRenderer *renderer = gtk_cell_renderer_pixbuf_new();
 	gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(combo), renderer, FALSE);
-	gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(combo), renderer, "pixbuf", 0, NULL);
+	gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(combo), renderer, "pixbuf", bgColPixbuf, NULL);
+	renderer = gtk_cell_renderer_text_new();
+	g_object_set(renderer, "wrap-mode", PANGO_WRAP_WORD, NULL);
+	g_object_set(renderer, "wrap-width", 300, NULL);
+	gtk_cell_layout_pack_start(GTK_CELL_LAYOUT(combo), renderer, FALSE);
+	gtk_cell_layout_set_attributes(GTK_CELL_LAYOUT(combo), renderer, "text", bgColText, NULL);
+	g_signal_connect(G_OBJECT(combo), "changed", G_CALLBACK(background_combo_changed), (void*)label);
 	return combo;
+}
+
+void background_combo_changed(GtkWidget *widget, gpointer data)
+{
+	gchar *combo_text = (gchar*)data;
+	if (!combo_text || g_str_equal(combo_text, ""))
+		return;
+	int selected_index = gtk_combo_box_get_active(GTK_COMBO_BOX(widget));
+
+	int index;
+	for (index = 0; ; index++) {
+		GtkTreePath *path;
+		GtkTreeIter iter;
+
+		path = gtk_tree_path_new_from_indices(index, -1);
+		gboolean found = gtk_tree_model_get_iter(GTK_TREE_MODEL(backgrounds), &iter, path);
+		gtk_tree_path_free(path);
+
+		if (!found) {
+			break;
+		}
+
+		gchar *text;
+		gtk_tree_model_get(GTK_TREE_MODEL(backgrounds), &iter,
+						   bgColText, &text,
+						   -1);
+		gchar **parts = g_strsplit(text, ", ", -1);
+		int ifound;
+		for (ifound = 0; parts[ifound]; ifound++) {
+			if (g_str_equal(parts[ifound], combo_text))
+				break;
+		}
+		if (parts[ifound] && index != selected_index) {
+			for (; parts[ifound+1]; ifound++) {
+				gchar *tmp = parts[ifound];
+				parts[ifound] = parts[ifound+1];
+				parts[ifound+1] = tmp;
+			}
+			g_free(parts[ifound]);
+			parts[ifound] = NULL;
+			text = g_strjoinv(", ", parts);
+			g_strfreev(parts);
+			gtk_list_store_set(backgrounds, &iter,
+							   bgColText, text,
+							   -1);
+			g_free(text);
+		} else if (!parts[ifound] && index == selected_index) {
+			if (!ifound) {
+				text = g_strdup(combo_text);
+			} else {
+				for (ifound = 0; parts[ifound]; ifound++) {
+					if (compare_strings(combo_text, parts[ifound]) < 0)
+						break;
+				}
+				if (parts[ifound]) {
+					gchar *tmp = parts[ifound];
+					parts[ifound] = g_strconcat(combo_text, ", ", tmp, NULL);
+					g_free(tmp);
+				} else {
+					ifound--;
+					gchar *tmp = parts[ifound];
+					parts[ifound] = g_strconcat(tmp, ", ", combo_text, NULL);
+					g_free(tmp);
+				}
+				text = g_strjoinv(", ", parts);
+				g_strfreev(parts);
+			}
+			gtk_list_store_set(backgrounds, &iter,
+							   bgColText, text,
+							   -1);
+			g_free(text);
+		}
+	}
 }
 
 void gdkColor2CairoColor(GdkColor color, double *red, double *green, double *blue)
@@ -368,6 +464,15 @@ void create_background(GtkWidget *parent)
 									 GDK_TYPE_COLOR,
 									 GTK_TYPE_INT,
 									 GTK_TYPE_INT,
+									 GTK_TYPE_INT,
+									 GTK_TYPE_STRING,
+									 GDK_TYPE_COLOR,
+									 GTK_TYPE_INT,
+									 GDK_TYPE_COLOR,
+									 GTK_TYPE_INT,
+									 GDK_TYPE_COLOR,
+									 GTK_TYPE_INT,
+									 GDK_TYPE_COLOR,
 									 GTK_TYPE_INT);
 
 	GtkWidget *table, *label, *button;
@@ -388,7 +493,7 @@ void create_background(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	current_background = create_background_combo();
+	current_background = create_background_combo(NULL);
 	gtk_widget_show(current_background);
 	gtk_table_attach(GTK_TABLE(table), current_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -443,6 +548,62 @@ void create_background(GtkWidget *parent)
 	gtk_tooltips_set_tip(tooltips, background_border_color, _("The border color of the current background"), NULL);
 
 	row++, col = 2;
+	label = gtk_label_new(_("Fill color (mouse over)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	background_fill_color_over = gtk_color_button_new();
+	gtk_color_button_set_use_alpha(GTK_COLOR_BUTTON(background_fill_color_over), TRUE);
+	gtk_widget_show(background_fill_color_over);
+	gtk_table_attach(GTK_TABLE(table), background_fill_color_over, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, background_fill_color_over, _("The fill color of the current background on mouse over"), NULL);
+
+	row++, col = 2;
+	label = gtk_label_new(_("Border color (mouse over)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	background_border_color_over = gtk_color_button_new();
+	gtk_color_button_set_use_alpha(GTK_COLOR_BUTTON(background_border_color_over), TRUE);
+	gtk_widget_show(background_border_color_over);
+	gtk_table_attach(GTK_TABLE(table), background_border_color_over, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, background_border_color_over, _("The border color of the current background on mouse over"), NULL);
+
+	row++, col = 2;
+	label = gtk_label_new(_("Fill color (pressed)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	background_fill_color_press = gtk_color_button_new();
+	gtk_color_button_set_use_alpha(GTK_COLOR_BUTTON(background_fill_color_press), TRUE);
+	gtk_widget_show(background_fill_color_press);
+	gtk_table_attach(GTK_TABLE(table), background_fill_color_press, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, background_fill_color_press, _("The fill color of the current background on mouse button press"), NULL);
+
+	row++, col = 2;
+	label = gtk_label_new(_("Border color (pressed)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	background_border_color_press = gtk_color_button_new();
+	gtk_color_button_set_use_alpha(GTK_COLOR_BUTTON(background_border_color_press), TRUE);
+	gtk_widget_show(background_border_color_press);
+	gtk_table_attach(GTK_TABLE(table), background_border_color_press, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, background_border_color_press, _("The border color of the current background on mouse button press"), NULL);
+
+	row++, col = 2;
 	label = gtk_label_new(_("Border width"));
 	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
 	gtk_widget_show(label);
@@ -471,6 +632,10 @@ void create_background(GtkWidget *parent)
 	g_signal_connect(G_OBJECT(current_background), "changed", G_CALLBACK(current_background_changed), NULL);
 	g_signal_connect(G_OBJECT(background_fill_color), "color-set", G_CALLBACK(background_update), NULL);
 	g_signal_connect(G_OBJECT(background_border_color), "color-set", G_CALLBACK(background_update), NULL);
+	g_signal_connect(G_OBJECT(background_fill_color_over), "color-set", G_CALLBACK(background_update), NULL);
+	g_signal_connect(G_OBJECT(background_border_color_over), "color-set", G_CALLBACK(background_update), NULL);
+	g_signal_connect(G_OBJECT(background_fill_color_press), "color-set", G_CALLBACK(background_update), NULL);
+	g_signal_connect(G_OBJECT(background_border_color_press), "color-set", G_CALLBACK(background_update), NULL);
 	g_signal_connect(G_OBJECT(background_border_width), "value-changed", G_CALLBACK(background_update), NULL);
 	g_signal_connect(G_OBJECT(background_corner_radius), "value-changed", G_CALLBACK(background_update), NULL);
 
@@ -514,6 +679,20 @@ void background_create_new()
 	cairoColor2GdkColor(0, 0, 0, &borderColor);
 	int borderOpacity = 0;
 
+	GdkColor fillColorOver;
+	cairoColor2GdkColor(0, 0, 0, &fillColorOver);
+	int fillOpacityOver = 0;
+	GdkColor borderColorOver;
+	cairoColor2GdkColor(0, 0, 0, &borderColorOver);
+	int borderOpacityOver = 0;
+
+	GdkColor fillColorPress;
+	cairoColor2GdkColor(0, 0, 0, &fillColorPress);
+	int fillOpacityPress = 0;
+	GdkColor borderColorPress;
+	cairoColor2GdkColor(0, 0, 0, &borderColorPress);
+	int borderOpacityPress = 0;
+
 	int index = 0;
 	GtkTreeIter iter;
 
@@ -526,10 +705,20 @@ void background_create_new()
 					   bgColBorderOpacity, borderOpacity,
 					   bgColBorderWidth, b,
 					   bgColCornerRadius, r,
+					   bgColFillColorOver, &fillColorOver,
+					   bgColFillOpacityOver, fillOpacityOver,
+					   bgColBorderColorOver, &borderColorOver,
+					   bgColBorderOpacityOver, borderOpacityOver,
+					   bgColFillColorPress, &fillColorPress,
+					   bgColFillOpacityPress, fillOpacityPress,
+					   bgColBorderColorPress, &borderColorPress,
+					   bgColBorderOpacityPress, borderOpacityPress,
+					   bgColText, "",
 					   -1);
 
 	background_update_image(index);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(current_background), get_model_length(GTK_TREE_MODEL(backgrounds)) - 1);
+	current_background_changed(0, 0);
 }
 
 void background_duplicate(GtkWidget *widget, gpointer data)
@@ -553,12 +742,28 @@ void background_duplicate(GtkWidget *widget, gpointer data)
 	int fillOpacity;
 	GdkColor *borderColor;
 	int borderOpacity;
+	GdkColor *fillColorOver;
+	int fillOpacityOver;
+	GdkColor *borderColorOver;
+	int borderOpacityOver;
+	GdkColor *fillColorPress;
+	int fillOpacityPress;
+	GdkColor *borderColorPress;
+	int borderOpacityPress;
 
 	gtk_tree_model_get(GTK_TREE_MODEL(backgrounds), &iter,
 					   bgColFillColor, &fillColor,
 					   bgColFillOpacity, &fillOpacity,
 					   bgColBorderColor, &borderColor,
 					   bgColBorderOpacity, &borderOpacity,
+					   bgColFillColorOver, &fillColorOver,
+					   bgColFillOpacityOver, &fillOpacityOver,
+					   bgColBorderColorOver, &borderColorOver,
+					   bgColBorderOpacityOver, &borderOpacityOver,
+					   bgColFillColorPress, &fillColorPress,
+					   bgColFillOpacityPress, &fillOpacityPress,
+					   bgColBorderColorPress, &borderColorPress,
+					   bgColBorderOpacityPress, &borderOpacityPress,
 					   bgColBorderWidth, &b,
 					   bgColCornerRadius, &r,
 					   -1);
@@ -570,11 +775,24 @@ void background_duplicate(GtkWidget *widget, gpointer data)
 					   bgColFillOpacity, fillOpacity,
 					   bgColBorderColor, borderColor,
 					   bgColBorderOpacity, borderOpacity,
+					   bgColFillColorOver, fillColorOver,
+					   bgColFillOpacityOver, fillOpacityOver,
+					   bgColBorderColorOver, borderColorOver,
+					   bgColBorderOpacityOver, borderOpacityOver,
+					   bgColFillColorPress, fillColorPress,
+					   bgColFillOpacityPress, fillOpacityPress,
+					   bgColBorderColorPress, borderColorPress,
+					   bgColBorderOpacityPress, borderOpacityPress,
 					   bgColBorderWidth, b,
 					   bgColCornerRadius, r,
+					   bgColText, ""
 					   -1);
 	g_boxed_free(GDK_TYPE_COLOR, fillColor);
 	g_boxed_free(GDK_TYPE_COLOR, borderColor);
+	g_boxed_free(GDK_TYPE_COLOR, fillColorOver);
+	g_boxed_free(GDK_TYPE_COLOR, borderColorOver);
+	g_boxed_free(GDK_TYPE_COLOR, fillColorPress);
+	g_boxed_free(GDK_TYPE_COLOR, borderColorPress);
 	background_update_image(get_model_length(GTK_TREE_MODEL(backgrounds)) - 1);
 	gtk_combo_box_set_active(GTK_COMBO_BOX(current_background), get_model_length(GTK_TREE_MODEL(backgrounds)) - 1);
 }
@@ -697,17 +915,35 @@ void background_update(GtkWidget *widget, gpointer data)
 
 	int r;
 	int b;
+	r = gtk_spin_button_get_value(GTK_SPIN_BUTTON(background_corner_radius));
+	b = gtk_spin_button_get_value(GTK_SPIN_BUTTON(background_border_width));
+
 	GdkColor fillColor;
 	int fillOpacity;
 	GdkColor borderColor;
 	int borderOpacity;
-
-	r = gtk_spin_button_get_value(GTK_SPIN_BUTTON(background_corner_radius));
-	b = gtk_spin_button_get_value(GTK_SPIN_BUTTON(background_border_width));
 	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_fill_color), &fillColor);
 	fillOpacity = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_fill_color)) * 100.0 / 0xffff);
 	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_border_color), &borderColor);
 	borderOpacity = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_border_color)) * 100.0 / 0xffff);
+
+	GdkColor fillColorOver;
+	int fillOpacityOver;
+	GdkColor borderColorOver;
+	int borderOpacityOver;
+	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_fill_color_over), &fillColorOver);
+	fillOpacityOver = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_fill_color_over)) * 100.0 / 0xffff);
+	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_border_color_over), &borderColorOver);
+	borderOpacityOver = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_border_color_over)) * 100.0 / 0xffff);
+
+	GdkColor fillColorPress;
+	int fillOpacityPress;
+	GdkColor borderColorPress;
+	int borderOpacityPress;
+	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_fill_color_press), &fillColorPress);
+	fillOpacityPress = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_fill_color_press)) * 100.0 / 0xffff);
+	gtk_color_button_get_color(GTK_COLOR_BUTTON(background_border_color_press), &borderColorPress);
+	borderOpacityPress = MIN(100, 0.5 + gtk_color_button_get_alpha(GTK_COLOR_BUTTON(background_border_color_press)) * 100.0 / 0xffff);
 
 	gtk_list_store_set(backgrounds, &iter,
 					   bgColPixbuf, NULL,
@@ -715,6 +951,14 @@ void background_update(GtkWidget *widget, gpointer data)
 					   bgColFillOpacity, fillOpacity,
 					   bgColBorderColor, &borderColor,
 					   bgColBorderOpacity, borderOpacity,
+					   bgColFillColorOver, &fillColorOver,
+					   bgColFillOpacityOver, fillOpacityOver,
+					   bgColBorderColorOver, &borderColorOver,
+					   bgColBorderOpacityOver, borderOpacityOver,
+					   bgColFillColorPress, &fillColorPress,
+					   bgColFillOpacityPress, fillOpacityPress,
+					   bgColBorderColorPress, &borderColorPress,
+					   bgColBorderOpacityPress, borderOpacityPress,
 					   bgColBorderWidth, b,
 					   bgColCornerRadius, r,
 					   -1);
@@ -740,12 +984,29 @@ void current_background_changed(GtkWidget *widget, gpointer data)
 	int fillOpacity;
 	GdkColor *borderColor;
 	int borderOpacity;
+	GdkColor *fillColorOver;
+	int fillOpacityOver;
+	GdkColor *borderColorOver;
+	int borderOpacityOver;
+	GdkColor *fillColorPress;
+	int fillOpacityPress;
+	GdkColor *borderColorPress;
+	int borderOpacityPress;
+
 
 	gtk_tree_model_get(GTK_TREE_MODEL(backgrounds), &iter,
 					   bgColFillColor, &fillColor,
 					   bgColFillOpacity, &fillOpacity,
 					   bgColBorderColor, &borderColor,
 					   bgColBorderOpacity, &borderOpacity,
+					   bgColFillColorOver, &fillColorOver,
+					   bgColFillOpacityOver, &fillOpacityOver,
+					   bgColBorderColorOver, &borderColorOver,
+					   bgColBorderOpacityOver, &borderOpacityOver,
+					   bgColFillColorPress, &fillColorPress,
+					   bgColFillOpacityPress, &fillOpacityPress,
+					   bgColBorderColorPress, &borderColorPress,
+					   bgColBorderOpacityPress, &borderOpacityPress,
 					   bgColBorderWidth, &b,
 					   bgColCornerRadius, &r,
 					   -1);
@@ -754,11 +1015,26 @@ void current_background_changed(GtkWidget *widget, gpointer data)
 	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color), (fillOpacity*0xffff)/100);
 	gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color), borderColor);
 	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color), (borderOpacity*0xffff)/100);
+
+	gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_over), fillColorOver);
+	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_over), (fillOpacityOver*0xffff)/100);
+	gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_over), borderColorOver);
+	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_over), (borderOpacityOver*0xffff)/100);
+
+	gtk_color_button_set_color(GTK_COLOR_BUTTON(background_fill_color_press), fillColorPress);
+	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_fill_color_press), (fillOpacityPress*0xffff)/100);
+	gtk_color_button_set_color(GTK_COLOR_BUTTON(background_border_color_press), borderColorPress);
+	gtk_color_button_set_alpha(GTK_COLOR_BUTTON(background_border_color_press), (borderOpacityPress*0xffff)/100);
+
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(background_border_width), b);
 	gtk_spin_button_set_value(GTK_SPIN_BUTTON(background_corner_radius), r);
 
 	g_boxed_free(GDK_TYPE_COLOR, fillColor);
 	g_boxed_free(GDK_TYPE_COLOR, borderColor);
+	g_boxed_free(GDK_TYPE_COLOR, fillColorOver);
+	g_boxed_free(GDK_TYPE_COLOR, borderColorOver);
+	g_boxed_free(GDK_TYPE_COLOR, fillColorPress);
+	g_boxed_free(GDK_TYPE_COLOR, borderColorPress);
 }
 
 void create_panel(GtkWidget *parent)
@@ -956,7 +1232,7 @@ void create_panel(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	panel_background = create_background_combo();
+	panel_background = create_background_combo(_("Panel"));
 	gtk_widget_show(panel_background);
 	gtk_table_attach(GTK_TABLE(table), panel_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -1035,6 +1311,110 @@ void create_panel(GtkWidget *parent)
 	col++;
 	gtk_tooltips_set_tip(tooltips, font_shadow, _("If enabled, a shadow will be drawn behind text. "
 						 "This may improve legibility on transparent panels."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Mouse effects"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	panel_mouse_effects = gtk_check_button_new();
+	gtk_widget_show(panel_mouse_effects);
+	gtk_table_attach(GTK_TABLE(table), panel_mouse_effects, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, panel_mouse_effects, _("Clickable interface items change appearance when the mouse is moved over them."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon opacity (hovered)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_hover_icon_opacity = gtk_spin_button_new_with_range(0, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_opacity), 100);
+	gtk_widget_show(mouse_hover_icon_opacity);
+	gtk_table_attach(GTK_TABLE(table), mouse_hover_icon_opacity, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_hover_icon_opacity, _("Specifies the opacity adjustment of the icons under the mouse, in percent."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon saturation (hovered)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_hover_icon_saturation = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_saturation), 0);
+	gtk_widget_show(mouse_hover_icon_saturation);
+	gtk_table_attach(GTK_TABLE(table), mouse_hover_icon_saturation, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_hover_icon_saturation, _("Specifies the saturation adjustment of the icons under the mouse, in percent."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon brightness (hovered)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_hover_icon_brightness = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_hover_icon_brightness), 10);
+	gtk_widget_show(mouse_hover_icon_brightness);
+	gtk_table_attach(GTK_TABLE(table), mouse_hover_icon_brightness, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_hover_icon_brightness, _("Specifies the brightness adjustment of the icons under the mouse, in percent."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon opacity (pressed)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_pressed_icon_opacity = gtk_spin_button_new_with_range(0, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_opacity), 100);
+	gtk_widget_show(mouse_pressed_icon_opacity);
+	gtk_table_attach(GTK_TABLE(table), mouse_pressed_icon_opacity, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_pressed_icon_opacity, _("Specifies the opacity adjustment of the icons on mouse button press, in percent."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon saturation (pressed)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_pressed_icon_saturation = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_saturation), 0);
+	gtk_widget_show(mouse_pressed_icon_saturation);
+	gtk_table_attach(GTK_TABLE(table), mouse_pressed_icon_saturation, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_pressed_icon_saturation, _("Specifies the saturation adjustment of the icons on mouse button press, in percent."), NULL);
+
+	row++;
+	col = 2;
+	label = gtk_label_new(_("Icon brightness (pressed)"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	mouse_pressed_icon_brightness = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(mouse_pressed_icon_brightness), 0);
+	gtk_widget_show(mouse_pressed_icon_brightness);
+	gtk_table_attach(GTK_TABLE(table), mouse_pressed_icon_brightness, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, mouse_pressed_icon_brightness, _("Specifies the brightness adjustment of the icons on mouse button press, in percent."), NULL);
 
 	change_paragraph(parent);
 
@@ -1808,11 +2188,6 @@ void load_desktop_entry(const char *file, GList **entries)
 	*entries = g_list_append(*entries, entry);
 }
 
-static gint compare_strings(gconstpointer a, gconstpointer b)
-{
-   return strnatcasecmp((const char*)a, (const char*)b);
-}
-
 void load_desktop_entries(const char *path, GList **entries)
 {
 	GList *subdirs = NULL;
@@ -2107,12 +2482,26 @@ void create_launcher(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	launcher_background = create_background_combo();
+	launcher_background = create_background_combo(_("Launcher"));
 	gtk_widget_show(launcher_background);
 	gtk_table_attach(GTK_TABLE(table), launcher_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 	gtk_tooltips_set_tip(tooltips, launcher_background, _("Selects the background used to display the launcher. "
 														"Backgrounds can be edited in the Backgrounds tab."), NULL);
+
+	row++, col = 2;
+	label = gtk_label_new(_("Icon background"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	launcher_icon_background = create_background_combo(_("Launcher icon"));
+	gtk_widget_show(launcher_icon_background);
+	gtk_table_attach(GTK_TABLE(table), launcher_icon_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, launcher_icon_background, _("Selects the background used to display the launcher icon. "
+															   "Backgrounds can be edited in the Backgrounds tab."), NULL);
 
 	row++, col = 2;
 	label = gtk_label_new(_("Horizontal padding"));
@@ -2177,6 +2566,7 @@ void create_launcher(GtkWidget *parent)
 	col++;
 
 	launcher_icon_opacity = gtk_spin_button_new_with_range(0, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_opacity), 100);
 	gtk_widget_show(launcher_icon_opacity);
 	gtk_table_attach(GTK_TABLE(table), launcher_icon_opacity, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2191,6 +2581,7 @@ void create_launcher(GtkWidget *parent)
 	col++;
 
 	launcher_icon_saturation = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_saturation), 0);
 	gtk_widget_show(launcher_icon_saturation);
 	gtk_table_attach(GTK_TABLE(table), launcher_icon_saturation, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2205,6 +2596,7 @@ void create_launcher(GtkWidget *parent)
 	col++;
 
 	launcher_icon_brightness = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(launcher_icon_brightness), 0);
 	gtk_widget_show(launcher_icon_brightness);
 	gtk_table_attach(GTK_TABLE(table), launcher_icon_brightness, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2483,7 +2875,7 @@ void create_taskbar(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	taskbar_active_background = create_background_combo();
+	taskbar_active_background = create_background_combo(_("Active taskbar"));
 	gtk_widget_show(taskbar_active_background);
 	gtk_table_attach(GTK_TABLE(table), taskbar_active_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2497,7 +2889,7 @@ void create_taskbar(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	taskbar_inactive_background = create_background_combo();
+	taskbar_inactive_background = create_background_combo(_("Inactive taskbar"));
 	gtk_widget_show(taskbar_inactive_background);
 	gtk_table_attach(GTK_TABLE(table), taskbar_inactive_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2617,7 +3009,7 @@ void create_taskbar(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	taskbar_name_active_background = create_background_combo();
+	taskbar_name_active_background = create_background_combo(_("Active desktop name"));
 	gtk_widget_show(taskbar_name_active_background);
 	gtk_table_attach(GTK_TABLE(table), taskbar_name_active_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2632,7 +3024,7 @@ void create_taskbar(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	taskbar_name_inactive_background = create_background_combo();
+	taskbar_name_inactive_background = create_background_combo(_("Inactive desktop name"));
 	gtk_widget_show(taskbar_name_inactive_background);
 	gtk_table_attach(GTK_TABLE(table), taskbar_name_inactive_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -2996,6 +3388,7 @@ void create_task(GtkWidget *parent)
 
 	create_task_status(notebook,
 					   _("Default style"),
+					   _("Default task"),
 					   &task_default_color,
 					   &task_default_color_set,
 					   &task_default_icon_opacity,
@@ -3005,6 +3398,7 @@ void create_task(GtkWidget *parent)
 					   &task_default_background,
 					   &task_default_background_set);
 	create_task_status(notebook,
+					   _("Normal task"),
 					   _("Normal task"),
 					   &task_normal_color,
 					   &task_normal_color_set,
@@ -3016,6 +3410,7 @@ void create_task(GtkWidget *parent)
 					   &task_normal_background_set);
 	create_task_status(notebook,
 					   _("Active task"),
+					   _("Active task"),
 					   &task_active_color,
 					   &task_active_color_set,
 					   &task_active_icon_opacity,
@@ -3026,6 +3421,7 @@ void create_task(GtkWidget *parent)
 					   &task_active_background_set);
 	create_task_status(notebook,
 					   _("Urgent task"),
+					   _("Urgent task"),
 					   &task_urgent_color,
 					   &task_urgent_color_set,
 					   &task_urgent_icon_opacity,
@@ -3035,6 +3431,7 @@ void create_task(GtkWidget *parent)
 					   &task_urgent_background,
 					   &task_urgent_background_set);
 	create_task_status(notebook,
+					   _("Iconified task"),
 					   _("Iconified task"),
 					   &task_iconified_color,
 					   &task_iconified_color_set,
@@ -3111,6 +3508,7 @@ void task_status_toggle_button_callback(GtkWidget *widget, gpointer data)
 
 void create_task_status(GtkWidget *notebook,
 						char *name,
+						char *text,
 						GtkWidget **task_status_color,
 						GtkWidget **task_status_color_set,
 						GtkWidget **task_status_icon_opacity,
@@ -3163,6 +3561,7 @@ void create_task_status(GtkWidget *notebook,
 	gtk_table_attach(GTK_TABLE(table), label, 1, 2, 1, 2, GTK_FILL, 0, 0, 0);
 
 	*task_status_icon_opacity = gtk_spin_button_new_with_range(0, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(*task_status_icon_opacity), 100);
 	gtk_widget_show(*task_status_icon_opacity);
 	gtk_table_attach(GTK_TABLE(table), *task_status_icon_opacity, 2, 3, 1, 2, GTK_FILL, 0, 0, 0);
 	gtk_tooltips_set_tip(tooltips, *task_status_icon_opacity, _("Specifies the opacity (in %) used to display the task icon."), NULL);
@@ -3173,6 +3572,7 @@ void create_task_status(GtkWidget *notebook,
 	gtk_table_attach(GTK_TABLE(table), label, 1, 2, 2, 3, GTK_FILL, 0, 0, 0);
 
 	*task_status_icon_saturation = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(*task_status_icon_saturation), 0);
 	gtk_widget_show(*task_status_icon_saturation);
 	gtk_table_attach(GTK_TABLE(table), *task_status_icon_saturation, 2, 3, 2, 3, GTK_FILL, 0, 0, 0);
 	gtk_tooltips_set_tip(tooltips, *task_status_icon_saturation, _("Specifies the saturation adjustment (in %) used to display the task icon."), NULL);
@@ -3183,6 +3583,7 @@ void create_task_status(GtkWidget *notebook,
 	gtk_table_attach(GTK_TABLE(table), label, 1, 2, 3, 4, GTK_FILL, 0, 0, 0);
 
 	*task_status_icon_brightness = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(*task_status_icon_brightness), 0);
 	gtk_widget_show(*task_status_icon_brightness);
 	gtk_table_attach(GTK_TABLE(table), *task_status_icon_brightness, 2, 3, 3, 4, GTK_FILL, 0, 0, 0);
 	gtk_tooltips_set_tip(tooltips, *task_status_icon_brightness, _("Specifies the brightness adjustment (in %) used to display the task icon."), NULL);
@@ -3198,7 +3599,7 @@ void create_task_status(GtkWidget *notebook,
 	gtk_widget_show(label);
 	gtk_table_attach(GTK_TABLE(table), label, 1, 2, 4, 5, GTK_FILL, 0, 0, 0);
 
-	*task_status_background = create_background_combo();
+	*task_status_background = create_background_combo(text);
 	gtk_widget_show(*task_status_background);
 	gtk_table_attach(GTK_TABLE(table), *task_status_background, 2, 3, 4, 5, GTK_FILL, 0, 0, 0);
 	gtk_tooltips_set_tip(tooltips, *task_status_background, _("Selects the background used to display the task. "
@@ -3420,7 +3821,7 @@ void create_clock(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	clock_background = create_background_combo();
+	clock_background = create_background_combo(_("Clock"));
 	gtk_widget_show(clock_background);
 	gtk_table_attach(GTK_TABLE(table), clock_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -3629,7 +4030,7 @@ void create_systemtray(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	systray_background = create_background_combo();
+	systray_background = create_background_combo(_("Systray"));
 	gtk_widget_show(systray_background);
 	gtk_table_attach(GTK_TABLE(table), systray_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -3703,6 +4104,7 @@ void create_systemtray(GtkWidget *parent)
 	col++;
 
 	systray_icon_opacity = gtk_spin_button_new_with_range(0, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(systray_icon_opacity), 100);
 	gtk_widget_show(systray_icon_opacity);
 	gtk_table_attach(GTK_TABLE(table), systray_icon_opacity, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -3717,6 +4119,7 @@ void create_systemtray(GtkWidget *parent)
 	col++;
 
 	systray_icon_saturation = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(systray_icon_saturation), 0);
 	gtk_widget_show(systray_icon_saturation);
 	gtk_table_attach(GTK_TABLE(table), systray_icon_saturation, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -3731,6 +4134,7 @@ void create_systemtray(GtkWidget *parent)
 	col++;
 
 	systray_icon_brightness = gtk_spin_button_new_with_range(-100, 100, 1);
+	gtk_spin_button_set_value(GTK_SPIN_BUTTON(systray_icon_brightness), 0);
 	gtk_widget_show(systray_icon_brightness);
 	gtk_table_attach(GTK_TABLE(table), systray_icon_brightness, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -3816,6 +4220,50 @@ void create_battery(GtkWidget *parent)
 
 	change_paragraph(parent);
 
+	label = gtk_label_new(_("<b>AC connection events</b>"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_label_set_use_markup(GTK_LABEL(label), TRUE);
+	gtk_widget_show(label);
+	gtk_box_pack_start(GTK_BOX(parent), label, FALSE, FALSE, 0);
+
+	table = gtk_table_new(2, 10, FALSE);
+	gtk_widget_show(table);
+	gtk_box_pack_start(GTK_BOX(parent), table, FALSE, FALSE, 0);
+	gtk_table_set_row_spacings(GTK_TABLE(table), ROW_SPACING);
+	gtk_table_set_col_spacings(GTK_TABLE(table), COL_SPACING);
+
+	row = 0, col = 2;
+	label = gtk_label_new(_("AC connected command"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	ac_connected_cmd = gtk_entry_new();
+	gtk_widget_show(ac_connected_cmd);
+	gtk_entry_set_width_chars(GTK_ENTRY(ac_connected_cmd), 50);
+	gtk_table_attach(GTK_TABLE(table), ac_connected_cmd, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, ac_connected_cmd,
+						 _("Specifies a command that will be executed when AC is connected to the system."), NULL);
+
+	row++, col = 2;
+	label = gtk_label_new(_("AC disconnected command"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	ac_disconnected_cmd = gtk_entry_new();
+	gtk_widget_show(ac_disconnected_cmd);
+	gtk_entry_set_width_chars(GTK_ENTRY(ac_disconnected_cmd), 50);
+	gtk_table_attach(GTK_TABLE(table), ac_disconnected_cmd, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, ac_disconnected_cmd,
+						 _("Specifies a command that will be executed when AC is disconnected to the system."), NULL);
+
+	change_paragraph(parent);
+
 	label = gtk_label_new(_("<b>Mouse events</b>"));
 	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
 	gtk_label_set_use_markup(GTK_LABEL(label), TRUE);
@@ -3829,6 +4277,20 @@ void create_battery(GtkWidget *parent)
 	gtk_table_set_col_spacings(GTK_TABLE(table), COL_SPACING);
 	row = 0, col = 2;
 
+	label = gtk_label_new(_("Tooltips"));
+	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
+	gtk_widget_show(label);
+	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+
+	battery_tooltip = gtk_check_button_new();
+	gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(battery_tooltip), 1);
+	gtk_widget_show(battery_tooltip);
+	gtk_table_attach(GTK_TABLE(table), battery_tooltip, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
+	col++;
+	gtk_tooltips_set_tip(tooltips, battery_tooltip, _("If enabled, shows a tooltip with detailed battery information when the mouse is moved over the battery widget."), NULL);
+
+	row++, col = 2;
 	label = gtk_label_new(_("Left click command"));
 	gtk_misc_set_alignment(GTK_MISC(label), 0, 0);
 	gtk_widget_show(label);
@@ -3924,7 +4386,7 @@ void create_battery(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	battery_background = create_background_combo();
+	battery_background = create_background_combo(_("Battery"));
 	gtk_widget_show(battery_background);
 	gtk_table_attach(GTK_TABLE(table), battery_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
@@ -4082,7 +4544,7 @@ void create_tooltip(GtkWidget *parent)
 	gtk_table_attach(GTK_TABLE(table), label, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
 
-	tooltip_background = create_background_combo();
+	tooltip_background = create_background_combo(_("Tooltip"));
 	gtk_widget_show(tooltip_background);
 	gtk_table_attach(GTK_TABLE(table), tooltip_background, col, col+1, row, row+1, GTK_FILL, 0, 0, 0);
 	col++;
