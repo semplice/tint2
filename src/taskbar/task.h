@@ -13,20 +13,20 @@
 #include "common.h"
 #include "timer.h"
 
+typedef enum TaskState {
+	TASK_NORMAL = 0,
+	TASK_ACTIVE,
+	TASK_ICONIFIED,
+	TASK_URGENT,
+	TASK_UNDEFINED,
+	TASK_STATE_COUNT,
+} TaskState;
 
-enum { TASK_NORMAL, TASK_ACTIVE, TASK_ICONIFIED, TASK_URGENT, TASK_STATE_COUNT };
-extern timeout* urgent_timeout;
-extern GSList* urgent_list;
-
-// --------------------------------------------------
-// global task parameter
-typedef struct {
+typedef struct GlobalTask {
 	Area area;
-
-	int text;
-	int icon;
-	int centered;
-
+	gboolean has_text;
+	gboolean has_icon;
+	gboolean centered;
 	int icon_posy;
 	int icon_size1;
 	int maximum_width;
@@ -35,31 +35,28 @@ typedef struct {
 	int saturation[TASK_STATE_COUNT];
 	int brightness[TASK_STATE_COUNT];
 	int config_asb_mask;
-	Background* background[TASK_STATE_COUNT];
+	Background *background[TASK_STATE_COUNT];
 	int config_background_mask;
 	// starting position for text ~ task_padding + task_border + icon_size
 	double text_posx, text_height;
-
+	gboolean has_font;
 	PangoFontDescription *font_desc;
 	Color font[TASK_STATE_COUNT];
 	int config_font_mask;
-	int tooltip_enabled;
-} Global_task;
+	gboolean tooltip_enabled;
+} GlobalTask;
 
-
-
-typedef struct {
-	// always start with area
+// Stores information about a task.
+// Warning: any dynamically allocated members are shared between the Task instances created for the same window
+// (if the task appears on all desktops, there will be a different instance on each desktop's taskbar).
+typedef struct Task {
 	Area area;
-
-	// TODO: group task with list of windows here
 	Window win;
-	int  desktop;
-	int current_state;
+	int desktop;
+	TaskState current_state;
 	Imlib_Image icon[TASK_STATE_COUNT];
 	Imlib_Image icon_hover[TASK_STATE_COUNT];
 	Imlib_Image icon_press[TASK_STATE_COUNT];
-	Pixmap state_pix[TASK_STATE_COUNT];
 	unsigned int icon_width;
 	unsigned int icon_height;
 	char *title;
@@ -69,27 +66,32 @@ typedef struct {
 	int win_y;
 	int win_w;
 	int win_h;
+	struct timespec last_activation_time;
 } Task;
 
+extern timeout *urgent_timeout;
+extern GSList *urgent_list;
 
-Task *add_task (Window win);
-void remove_task (Task *tsk);
+Task *add_task(Window win);
+void remove_task(Task *task);
 
-void draw_task (void *obj, cairo_t *c);
-void on_change_task (void *obj);
+void draw_task(void *obj, cairo_t *c);
+void on_change_task(void *obj);
 
-void get_icon (Task *tsk);
-int  get_title(Task *tsk);
-void active_task();
-void set_task_state(Task* tsk, int state);
-void set_task_redraw(Task* tsk);
+void task_update_icon(Task *task);
+gboolean task_update_title(Task *task);
+void reset_active_task();
+void set_task_state(Task *task, TaskState state);
 
-Task *find_active_task(Task *current_task, Task *active_task);
-Task *next_task (Task *tsk);
-Task *prev_task (Task *tsk);
+// Given a pointer to the task that is currently under the mouse (current_task),
+// returns a pointer to the Task for the active window on the same taskbar.
+// If not found, returns the current task.
+Task *find_active_task(Task *current_task);
 
-void add_urgent(Task *tsk);
-void del_urgent(Task *tsk);
+Task *next_task(Task *task);
+Task *prev_task(Task *task);
+
+void add_urgent(Task *task);
+void del_urgent(Task *task);
 
 #endif
-

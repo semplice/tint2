@@ -17,7 +17,6 @@
 * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 **************************************************************************/
 
-
 #include <string.h>
 #include <stdio.h>
 #include <cairo.h>
@@ -33,24 +32,24 @@
 
 void init_freespace_panel(void *p)
 {
-	Panel *panel = (Panel*)p;
+	Panel *panel = (Panel *)p;
 	FreeSpace *freespace = &panel->freespace;
 
-	if (freespace->area.bg == 0)
+	if (!freespace->area.bg)
 		freespace->area.bg = &g_array_index(backgrounds, Background, 0);
 	freespace->area.parent = p;
 	freespace->area.panel = p;
-	freespace->area.size_mode = SIZE_BY_CONTENT;
-	freespace->area.resize = 1;
-	freespace->area.on_screen = 1;
+	freespace->area.size_mode = LAYOUT_FIXED;
+	freespace->area.resize_needed = 1;
+	freespace->area.on_screen = TRUE;
 	freespace->area._resize = resize_freespace;
 }
 
-int freespace_get_max_size(Panel *p) {
+int freespace_get_max_size(Panel *p)
+{
 	// Get space used by every element except the freespace
-	GList *walk;
 	int size = 0;
-	for (walk = p->area.children; walk; walk = g_list_next(walk)) {
+	for (GList *walk = p->area.children; walk; walk = g_list_next(walk)) {
 		Area *a = (Area *)walk->data;
 
 		if (a->_resize == resize_freespace || !a->on_screen)
@@ -70,16 +69,17 @@ int freespace_get_max_size(Panel *p) {
 	return size;
 }
 
-int resize_freespace(void *obj) {
-	FreeSpace *freespace = (FreeSpace*)obj;
-	Panel *panel = (Panel*)freespace->area.panel;
+gboolean resize_freespace(void *obj)
+{
+	FreeSpace *freespace = (FreeSpace *)obj;
+	Panel *panel = (Panel *)freespace->area.panel;
 	if (!freespace->area.on_screen)
-		return 0;
+		return FALSE;
 
 	int old_size = panel_horizontal ? freespace->area.width : freespace->area.height;
 	int size = freespace_get_max_size(panel);
 	if (old_size == size)
-		return 0;
+		return FALSE;
 
 	if (panel_horizontal) {
 		freespace->area.width = size;
@@ -87,7 +87,7 @@ int resize_freespace(void *obj) {
 		freespace->area.height = size;
 	}
 
-	freespace->area.redraw = 1;
-	panel_refresh = 1;
-	return 1;
+	schedule_redraw(&freespace->area);
+	panel_refresh = TRUE;
+	return TRUE;
 }

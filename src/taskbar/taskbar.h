@@ -11,74 +11,82 @@
 #include "task.h"
 #include "taskbarname.h"
 
-enum { TASKBAR_NORMAL, TASKBAR_ACTIVE, TASKBAR_STATE_COUNT };
-extern GHashTable *win_to_task_table;
-extern Task *task_active;
-extern Task *task_drag;
-extern int taskbar_enabled;
-extern int taskbar_distribute_size;
-extern int hide_inactive_tasks;
-extern int hide_task_diff_monitor;
-enum { TASKBAR_NOSORT, TASKBAR_SORT_CENTER, TASKBAR_SORT_TITLE };
-extern int taskbar_sort_method;
-extern int taskbar_alignment;
+typedef enum TaskbarState {
+	TASKBAR_NORMAL = 0,
+	TASKBAR_ACTIVE,
+	TASKBAR_STATE_COUNT,
+} TaskbarState;
+
+typedef enum TaskbarSortMethod {
+	TASKBAR_NOSORT = 0,
+	TASKBAR_SORT_CENTER,
+	TASKBAR_SORT_TITLE,
+	TASKBAR_SORT_LRU,
+	TASKBAR_SORT_MRU,
+} TaskbarSortMethod;
 
 typedef struct {
-	// always start with area
 	Area area;
-	Pixmap state_pix[TASKBAR_STATE_COUNT];
-
 	gchar *name;
-	int  posy;
-} Taskbarname;
+	int posy;
+} TaskbarName;
 
-// tint2 use one taskbar per desktop.
 typedef struct {
-	// always start with area
 	Area area;
-
 	int desktop;
-	Pixmap state_pix[TASKBAR_STATE_COUNT];
-
-	Taskbarname bar_name;
-	
-	// task parameters
+	TaskbarName bar_name;
 	int text_width;
 } Taskbar;
 
-typedef struct {
-	//always start with area
+typedef struct GlobalTaskbar {
 	Area area;
 	Area area_name;
-	Background* background[TASKBAR_STATE_COUNT];
-	Background* background_name[TASKBAR_STATE_COUNT];
-} Global_taskbar;
+	Background *background[TASKBAR_STATE_COUNT];
+	Background *background_name[TASKBAR_STATE_COUNT];
+} GlobalTaskbar;
 
+extern gboolean taskbar_enabled;
+extern gboolean taskbar_distribute_size;
+extern gboolean hide_inactive_tasks;
+extern gboolean hide_task_diff_monitor;
+extern gboolean always_show_all_desktop_tasks;
+extern TaskbarSortMethod taskbar_sort_method;
+extern Alignment taskbar_alignment;
 
-// default global data
+// win_to_task holds for every Window an array of tasks. Usually the array contains only one
+// element. However for omnipresent windows (windows which are visible in every taskbar) the array
+// contains to every Task* on each panel a pointer (i.e. GPtrArray.len == server.num_desktops)
+extern GHashTable *win_to_task;
+
+extern Task *active_task;
+extern Task *task_drag;
+
 void default_taskbar();
-
-// freed memory
 void cleanup_taskbar();
-
 void init_taskbar();
 void init_taskbar_panel(void *p);
 
-void draw_taskbar (void *obj, cairo_t *c);
-void taskbar_remove_task(gpointer key, gpointer value, gpointer user_data);
-Task *task_get_task (Window win);
-GPtrArray* task_get_tasks(Window win);
-void task_refresh_tasklist ();
+gboolean resize_taskbar(void *obj);
+void taskbar_default_font_changed();
 
-int  resize_taskbar(void *obj);
-void on_change_taskbar (void *obj);
-void set_taskbar_state(Taskbar *tskbar, int state);
+// Reloads the entire list of tasks from the window manager and recreates the task buttons.
+void taskbar_refresh_tasklist();
 
-// show/hide taskbar according to current desktop
-void visible_taskbar(void *p);
+// Returns the task button for this window. If there are multiple buttons, returns the first one.
+Task *get_task(Window win);
 
+// Returns the task buttons for this window, usually having only one element.
+// However for windows shown on all desktops, there are multiple buttons, one for each taskbar.
+GPtrArray *get_task_buttons(Window win);
+
+void set_taskbar_state(Taskbar *taskbar, TaskbarState state);
+
+// Updates the visibility of each taskbar when the current desktop changes.
+void update_taskbar_visibility(void *p);
+
+// Sorts the taskbar(s) on which the window is present.
 void sort_taskbar_for_win(Window win);
+
 void sort_tasks(Taskbar *taskbar);
 
 #endif
-

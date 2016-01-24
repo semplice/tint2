@@ -160,3 +160,11 @@ src/battery/linux.c
 src/battery/openbsd.c
 src/util/uevent.c
 src/util/uevent.h
+.clang-format
+src/execplugin/execplugin.c
+src/execplugin/execplugin.h
+src/tint2conf/po/bs.po
+src/tint2conf/po/fr.po
+src/tint2conf/po/hr.po
+src/tint2conf/po/pl.po
+src/tint2conf/po/sr.po
