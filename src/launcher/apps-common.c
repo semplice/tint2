@@ -111,6 +111,7 @@ int read_desktop_file(const char *path, DesktopEntry *entry)
 
 	entry->path = strdup(path);
 	entry->name = entry->icon = entry->exec = NULL;
+	entry->terminal = FALSE;
 
 	if ((fp = fopen(path, "rt")) == NULL) {
 		fprintf(stderr, "Could not open file %s\n", path);
@@ -164,6 +165,10 @@ int read_desktop_file(const char *path, DesktopEntry *entry)
 				entry->exec = strdup(value);
 			} else if (!entry->icon && strcmp(key, "Icon") == 0) {
 				entry->icon = strdup(value);
+			} else if (strcmp(key, "Terminal") == 0) {
+				entry->terminal = (strcmp(g_ascii_strup(value, strlen(value)), "TRUE") == 0)
+				                      ? TRUE
+				                      : FALSE;
 			}
 		}
 	}

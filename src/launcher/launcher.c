@@ -51,6 +51,7 @@ int launcher_brightness;
 char *icon_theme_name_config;
 char *icon_theme_name_xsettings;
 int launcher_icon_theme_override;
+char *launcher_terminal_command;
 int startup_notifications;
 Background *launcher_icon_bg;
 
@@ -68,6 +69,7 @@ void default_launcher()
 	icon_theme_name_config = NULL;
 	icon_theme_name_xsettings = NULL;
 	launcher_icon_theme_override = 0;
+	launcher_terminal_command = "xterm -e %s";
 	startup_notifications = 0;
 	launcher_icon_bg = NULL;
 }
@@ -407,7 +409,16 @@ void launcher_action(LauncherIcon *icon, XEvent *evt)
 		// Allow children to exist after parent destruction
 		setsid();
 		// Run the command
-		execl("/bin/sh", "/bin/sh", "-c", icon->cmd, NULL);
+		if (icon->requires_terminal) {
+			ssize_t tcmdz = snprintf(NULL, 0, launcher_terminal_command, icon->cmd);
+			char *tcmd = malloc(tcmdz + 1);
+			snprintf(tcmd, tcmdz + 1, launcher_terminal_command, icon->cmd);
+
+			execl("/bin/sh", "/bin/sh", "-c", tcmd, NULL);
+			free(tcmd);
+		} else {
+			execl("/bin/sh", "/bin/sh", "-c", icon->cmd, NULL);
+		}
 		fprintf(stderr, "Failed to execlp %s\n", icon->cmd);
 #if HAVE_SN
 		if (startup_notifications) {
@@ -453,6 +464,7 @@ void launcher_load_icons(Launcher *launcher)
 				launcherIcon->area._get_tooltip_text = NULL;
 			}
 			launcherIcon->is_app_desktop = 1;
+			launcherIcon->requires_terminal = entry.terminal;
 			launcherIcon->cmd = strdup(entry.exec);
 			launcherIcon->icon_name = entry.icon ? strdup(entry.icon) : strdup(DEFAULT_ICON);
 			launcherIcon->icon_size = 1;

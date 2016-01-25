@@ -26,6 +26,7 @@ typedef struct LauncherIcon {
 	Imlib_Image image;
 	Imlib_Image image_hover;
 	Imlib_Image image_pressed;
+	gboolean requires_terminal;
 	char *cmd;
 	char *icon_name;
 	char *icon_path;
@@ -44,6 +45,7 @@ extern int launcher_brightness;
 extern char *icon_theme_name_xsettings; // theme name
 extern char *icon_theme_name_config;
 extern int launcher_icon_theme_override;
+extern char *launcher_terminal_command;
 extern int startup_notifications;
 extern Background *launcher_icon_bg;
 

@@ -931,6 +931,8 @@ void add_entry(char *key, char *value)
 		launcher_brightness = atoi(value3);
 	} else if (strcmp(key, "launcher_tooltip") == 0) {
 		launcher_tooltip_enabled = atoi(value);
+	} else if (strcmp(key, "launcher_terminal_command") == 0) {
+		launcher_terminal_command = strdup(value);
 	} else if (strcmp(key, "startup_notifications") == 0) {
 		startup_notifications = atoi(value);
 	}

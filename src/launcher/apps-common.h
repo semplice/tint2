@@ -4,6 +4,8 @@
  *
  **************************************************************************/
 
+#include <glib.h>
+
 #ifndef APPS_COMMON_H
 #define APPS_COMMON_H
 
@@ -12,6 +14,7 @@ typedef struct DesktopEntry {
 	char *exec;
 	char *icon;
 	char *path;
+	gboolean terminal;
 } DesktopEntry;
 
 // Parses a line of the form "key = value". Modifies the line.
