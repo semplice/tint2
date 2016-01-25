@@ -1,3 +1,19 @@
+tint2 (1:0.12.6-1semplice1) unstable; urgency=medium
+
+  [ o9000 ]
+  * Updated readme
+  * Executor: send click coordinates via environment variables
+  * Move terminal color reset code to the same line (issue #545)
+  * Check that the window desktop index is in the valid range
+  * Fix build on slackware
+  * Fix crash on 32-bit
+  * Release 0.12.6
+
+  [ Eugenio Paolantonio (g7) ]
+  * [patches] Include git:launcherTerminal
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Tue, 26 Jan 2016 00:37:14 +0100
+
 tint2 (1:0.12.5-1semplice1) unstable; urgency=medium
 
   [ o9000 ]
