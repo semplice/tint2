@@ -1,3 +1,113 @@
+tint2 (1:0.12.5-1semplice1) unstable; urgency=medium
+
+  [ o9000 ]
+  * Cleanup: area.h
+  * Cleanup indentation with clang-format and changed a few variable names
+  * Support for NETWM viewports (compiz)
+  * Updated changelog
+  * Fix missing redraw
+  * Fix battery showing/hiding (issue #531)
+  * Battery: Only redraw when needed, not after each tick
+  * Battery: refactoring
+  * Merged execplugin from tint2-mods2 (no config GUI yet)
+  * New config option: taskbar sort by LRU/MRU (no config GUI yet) (issue #532)
+  * Changed default config
+  * Execplugin: add pango markup option
+  * New config option: taskbar sort by LRU/MRU (config GUI) (issue #532)
+  * Add missing include
+  * Add C99 compilation flag
+  * execp: Fix segfault
+  * Add C99 compilation flag to tint2conf
+  * Updated config
+  * Do not look for libraries that are disabled
+  * Use default desktop font (Gtk/FontName from XSettings) when the font is not specified in the config file
+  * Make the default font for workspace name bold
+  * Clock: increase default font slightly
+  * Fix compilation error in issue 536
+  * Code cleanup
+  * Set XWMHints flags correctly
+  * Change window type to DOCK (fixes placement on kde and bspwm, issue 537; breaks issue 455)
+  * Updated changelog
+  * Rename: monitor -> monitors
+  * Add option primary_monitor_first (fixes issue #538)
+  * Executor: tint2conf support for one instance
+  * Executor: tint2conf support
+  * tint2conf: Updated translation files
+  * Updated changelog
+  * tint2conf: Save executor index in comment in config file
+  * Fix build for older glib
+  * Move -Wshadow compilation flag to debug flags
+  * Set default font in tint2conf (fixes issue #535)
+  * Work better with empty config files
+  * Sort correctly for primary_monitor_first
+  * Fix battery compilation for DragonFly BSD
+  * Fix battery compilation for DragonFly BSD
+  * Cache pixmaps for mouse effects to improve performance
+  * Simplify systray rendering
+  * Rename dsp -> display
+  * Some systray fixes
+  * Dump stack trace on crash
+  * Dump stack trace on crash also on a file in $HOME
+  * Remove abort
+  * Show warning on missing backtrace libs
+  * Attempt to fix execinfo lookup on BSD
+  * Attempt to fix compilation on BSD
+  * Do not use negative values for task state since it is used as array index
+  * Disable system tray empty icon detection, since it is buggy
+  * Attempt to fix compilation on BSD
+  * Attempt to fix compilation on BSD
+  * Attempt to fix compilation on BSD
+  * Work better without a config file
+  * Work better without a config file
+  * Restart on crash
+  * Comment code to trigger a crash
+  * Updated changelog
+  * Updated changelog for new dependencies
+  * Cleanup restart code
+  * Do not restart on crash, it cannot be done reliably from a single process; use instead "while true ; do tint2 ; sleep 1; done"
+  * Move backtrace generation behind cmake flag
+  * Reorder some statements
+  * Always sleep 1s at startup to let the compositor start first
+  * Updated changelog
+  * Disable backtrace by default
+  * Disable copying of sample themes to ~/.config
+  * Updated readme regarding debugging crashes
+  * Remove the sleep at startup since it has side effects and is a poor solution anyways
+  * Systray: handle changing icon names and reorder if necessary
+  * Update changelog
+  * Always enable mouse effects (workaround for issue #542)
+  * Remove double pixmap caching, it is crazy (see issue #542)
+  * Allow user to disable mouse effects (workaround for issue #542 no longer needed)
+  * Taskbar: code cleanup
+  * Taskbar: code cleanup
+  * Taskbar: code cleanup (rename task_group -> task_buttons)
+  * Set desktop name font to bold in tint2conf
+  * Changed tint2rc
+  * tint2conf: leave font setting to default if not set
+  * New config option: taskbar_always_show_all_desktop_tasks (fixes issue #279)
+  * Changed tint2rc
+  * Limit tooltip width
+  * Fix compiz support with multiple desktops and monitors
+  * Updated changelog
+  * Fix bad read of font setting
+  * tint2conf: Make window wider
+  * Add SA_RESTART to sigaction
+  * Fix compiz support with multiple desktops and monitors (issue #94)
+  * Updated po files
+  * Updated French translation
+  * Updated French translation (issue #526)
+  * Updated French translation (issue #526, thanks @melodie @wagmic)
+  * Log info about why a panel restart was triggered
+  * Updated AUTHORS file
+  * Release 0.12.4
+  * Fix bad clear of panel pixmap when display compositing is disabled
+  * Refactor a bit the last change
+  * Release 0.12.5
+
+  [ Eugenio Paolantonio (g7) ]
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Mon, 25 Jan 2016 01:01:41 +0100
+
 tint2 (1:0.12.3-1semplice1) unstable; urgency=medium
 
   [ o9000 ]
