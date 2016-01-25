@@ -18,8 +18,9 @@
 #endif
 #include <glib.h>
 
-typedef struct Global_atom
-{
+extern gboolean primary_monitor_first;
+
+typedef struct Global_atom {
 	Atom _XROOTPMAP_ID;
 	Atom _XROOTMAP_ID;
 	Atom _NET_CURRENT_DESKTOP;
@@ -27,6 +28,7 @@ typedef struct Global_atom
 	Atom _NET_DESKTOP_NAMES;
 	Atom _NET_DESKTOP_GEOMETRY;
 	Atom _NET_DESKTOP_VIEWPORT;
+	Atom _NET_WORKAREA;
 	Atom _NET_ACTIVE_WINDOW;
 	Atom _NET_WM_WINDOW_TYPE;
 	Atom _NET_WM_STATE_SKIP_PAGER;
@@ -91,34 +93,40 @@ typedef struct Global_atom
 	Atom TARGETS;
 } Global_atom;
 
-
-
-typedef struct Monitor
-{
+typedef struct Monitor {
 	int x;
 	int y;
 	int width;
 	int height;
-	gchar** names;
+	gboolean primary;
+	gchar **names;
 } Monitor;
 
+typedef struct Viewport {
+	int x;
+	int y;
+	int width;
+	int height;
+} Viewport;
 
-typedef struct
-{
-	Display *dsp;
+typedef struct Server {
+	Display *display;
 	Window root_win;
 	Window composite_manager;
-	int real_transparency;
-	int disable_transparency;
+	gboolean real_transparency;
+	gboolean disable_transparency;
 	// current desktop
 	int desktop;
 	int screen;
 	int depth;
-	int nb_desktop;
+	int num_desktops;
 	// number of monitor (without monitor included into another one)
-	int nb_monitor;
-	Monitor *monitor;
-	int got_root_win;
+	int num_monitors;
+	// Non-null only if WM uses viewports (compiz) and number of viewports > 1.
+	// In that case there are num_desktops viewports.
+	Viewport *viewports;
+	Monitor *monitors;
+	gboolean got_root_win;
 	Visual *visual;
 	Visual *visual32;
 	// root background
@@ -128,24 +136,22 @@ typedef struct
 	Colormap colormap32;
 	Global_atom atom;
 #ifdef HAVE_SN
-	SnDisplay *sn_dsp;
+	SnDisplay *sn_display;
 	GTree *pids;
 #endif // HAVE_SN
-} Server_global;
+} Server;
 
-
-extern Server_global server;
-
+extern Server server;
 
 // freed memory
 void cleanup_server();
 
-void send_event32 (Window win, Atom at, long data1, long data2, long data3);
-int  get_property32 (Window win, Atom at, Atom type);
-void *server_get_property (Window win, Atom at, Atom type, int *num_results);
-Atom server_get_atom (char *atom_name);
-void server_catch_error (Display *d, XErrorEvent *ev);
-void server_init_atoms ();
+void send_event32(Window win, Atom at, long data1, long data2, long data3);
+int get_property32(Window win, Atom at, Atom type);
+void *server_get_property(Window win, Atom at, Atom type, int *num_results);
+Atom server_get_atom(char *atom_name);
+void server_catch_error(Display *d, XErrorEvent *ev);
+void server_init_atoms();
 void server_init_visual();
 
 // detect root background
@@ -155,6 +161,10 @@ void get_root_pixmap();
 void get_monitors();
 void print_monitors();
 void get_desktops();
-int server_get_number_of_desktops();
+void server_get_number_of_desktops();
+GSList *get_desktop_names();
+int get_current_desktop();
+void change_desktop(int desktop);
+
 
 #endif

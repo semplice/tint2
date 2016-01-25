@@ -16,42 +16,40 @@
 #include "common.h"
 #include "area.h"
 
-
-// battery drawing parameter (per panel)
 typedef struct Battery {
-	// always start with area
 	Area area;
-
-	Color font;
+	Color font_color;
 	int bat1_posy;
 	int bat2_posy;
 } Battery;
 
-enum chargestate {
-	BATTERY_UNKNOWN,
+typedef enum ChargeState {
+	BATTERY_UNKNOWN = 0,
 	BATTERY_CHARGING,
 	BATTERY_DISCHARGING,
-	BATTERY_FULL
-};
+	BATTERY_FULL,
+} ChargeState;
 
-typedef struct battime {
+typedef struct BatteryTime {
 	int16_t hours;
 	int8_t minutes;
 	int8_t seconds;
-} battime;
+} BatteryTime;
 
-typedef struct batstate {
+typedef struct BatteryState {
 	int percentage;
-	struct battime time;
-	enum chargestate state;
+	BatteryTime time;
+	ChargeState state;
 	gboolean ac_connected;
-} batstate;
+} BatteryState;
 
-extern struct batstate battery_state;
+extern struct BatteryState battery_state;
+extern gboolean bat1_has_font;
 extern PangoFontDescription *bat1_font_desc;
+extern gboolean bat2_has_font;
 extern PangoFontDescription *bat2_font_desc;
-extern int battery_enabled;
-extern int battery_tooltip_enabled;
+extern gboolean battery_enabled;
+extern gboolean battery_tooltip_enabled;
 extern int percentage_hide;
 
 extern int8_t battery_low_status;
@@ -66,21 +64,23 @@ extern char *battery_rclick_command;
 extern char *battery_uwheel_command;
 extern char *battery_dwheel_command;
 
-static inline gchar* chargestate2str(enum chargestate state) {
-	switch(state) {
-		case BATTERY_CHARGING:
-			return "Charging";
-		case BATTERY_DISCHARGING:
-			return "Discharging";
-		case BATTERY_FULL:
-			return "Full";
-		case BATTERY_UNKNOWN:
-		default:
-			return "Unknown";
+static inline gchar *chargestate2str(ChargeState state)
+{
+	switch (state) {
+	case BATTERY_CHARGING:
+		return "Charging";
+	case BATTERY_DISCHARGING:
+		return "Discharging";
+	case BATTERY_FULL:
+		return "Full";
+	case BATTERY_UNKNOWN:
+	default:
+		return "Unknown";
 	};
 }
 
-static inline void batstate_set_time(struct batstate *state, int seconds) {
+static inline void battery_state_set_time(BatteryState *state, int seconds)
+{
 	state->time.hours = seconds / 3600;
 	seconds -= 3600 * state->time.hours;
 	state->time.minutes = seconds / 60;
@@ -94,7 +94,7 @@ void default_battery();
 // freed memory
 void cleanup_battery();
 
-void update_battery_tick(void* arg);
+void update_battery_tick(void *arg);
 int update_battery();
 
 void init_battery();
@@ -102,15 +102,16 @@ void init_battery_panel(void *panel);
 
 void reinit_battery();
 void draw_battery(void *obj, cairo_t *c);
+void battery_default_font_changed();
 
-int  resize_battery(void *obj);
+gboolean resize_battery(void *obj);
 
 void battery_action(int button);
 
 /* operating system specific functions */
 gboolean battery_os_init();
 void battery_os_free();
-int battery_os_update(struct batstate *state);
-char* battery_os_tooltip();
+int battery_os_update(BatteryState *state);
+char *battery_os_tooltip();
 
 #endif

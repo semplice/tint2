@@ -7,12 +7,15 @@ option( ENABLE_EXAMPLES "Install additional tin2rc examples" ON )
 option( ENABLE_RSVG "Rsvg support (launcher only)" ON )
 option( ENABLE_SN "Startup notification support" ON )
 option( ENABLE_ASAN "Build tint2 with AddressSanitizer" OFF )
+option( ENABLE_BACKTRACE "Dump a backtrace in case of fatal errors (e.g. X11 I/O error)" OFF )
+option( ENABLE_BACKTRACE_ON_SIGNAL "Dump a backtrace also when receiving signals such as SIGSEGV" OFF )
 if( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
   option( ENABLE_UEVENT "Kernel event handling support" ON )
 endif( CMAKE_SYSTEM_NAME STREQUAL "Linux" )
 
 include( FindPkgConfig )
 include( CheckLibraryExists )
+include( CheckCSourceCompiles )
 pkg_check_modules( X11 REQUIRED x11 xcomposite xdamage xinerama xrender xrandr>=1.3 )
 pkg_check_modules( PANGOCAIRO REQUIRED pangocairo )
 pkg_check_modules( PANGO REQUIRED pango )
@@ -20,8 +23,43 @@ pkg_check_modules( CAIRO REQUIRED cairo )
 pkg_check_modules( GLIB2 REQUIRED glib-2.0 )
 pkg_check_modules( GOBJECT2 REQUIRED gobject-2.0 )
 pkg_check_modules( IMLIB2 REQUIRED imlib2>=1.4.2 )
+
+if(ENABLE_BACKTRACE)
+	check_c_source_compiles(
+		"#include <stdlib.h>\n#include <execinfo.h>\nint main () { backtrace(NULL, 0); }"
+		BACKTRACE_LIBC)
+
+	if(BACKTRACE_LIBC)
+		set(BACKTRACE_LIBC_FOUND TRUE)
+		set(BACKTRACE_L_FLAGS "-rdynamic")
+	else()
+		pkg_check_modules( UNWIND libunwind )
+		find_library(EXECINFO_LIBRARIES NAMES execinfo)
+		if(EXECINFO_LIBRARIES OR EXECINFO_LIBRARIES_FOUND)
+			set(EXECINFO_FOUND TRUE)
+			set(EXECINFO_LIBRARIES "-lexecinfo")
+			set(BACKTRACE_L_FLAGS "-rdynamic")
+		else()
+			set(EXECINFO_LIBRARIES "")
+			set(BACKTRACE_L_FLAGS "")
+		endif()
+	endif()
+
+	if( NOT BACKTRACE_LIBC_FOUND AND NOT UNWIND_FOUND AND NOT EXECINFO_FOUND )
+	  message( WARNING "Backtrace support not available. You can enable it by installing libexecinfo or libunwind." )
+	endif()
+else()
+	set(EXECINFO_LIBRARIES "")
+	set(BACKTRACE_L_FLAGS "")
+endif()
+
+if( ENABLE_RSVG )
 pkg_check_modules( RSVG librsvg-2.0>=2.14.0 )
+endif( ENABLE_RSVG )
+
+if( ENABLE_SN )
 pkg_check_modules( SN libstartup-notification-1.0>=0.12 )
+endif(ENABLE_SN)
 
 find_library( RT_LIBRARY rt )
 
@@ -47,6 +85,7 @@ include_directories( ${PROJECT_BINARY_DIR}
                      src/launcher
                      src/tooltip
                      src/util
+					 src/execplugin
                      src/freespace
                      ${X11_INCLUDE_DIRS}
                      ${PANGOCAIRO_INCLUDE_DIRS}
@@ -73,6 +112,7 @@ set( SOURCES src/config.c
              src/taskbar/taskbar.c
              src/taskbar/taskbarname.c
              src/tooltip/tooltip.c
+			 src/execplugin/execplugin.c
              src/freespace/freespace.c
              src/util/area.c
              src/util/common.c
@@ -85,6 +125,8 @@ if( ENABLE_BATTERY )
 
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     set( SOURCES ${SOURCES} src/battery/linux.c)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "DragonFly")
+    set( SOURCES ${SOURCES} src/battery/freebsd.c)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "FreeBSD")
     set( SOURCES ${SOURCES} src/battery/freebsd.c)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
@@ -119,6 +161,26 @@ if( ENABLE_UEVENT )
   set( SOURCES ${SOURCES} src/util/uevent.c)
 endif( ENABLE_UEVENT )
 
+if(ENABLE_BACKTRACE)
+	if(BACKTRACE_LIBC_FOUND)
+	  add_definitions( -DENABLE_EXECINFO )
+	endif()
+
+	if( UNWIND_FOUND )
+	  add_definitions( -DENABLE_LIBUNWIND )
+	endif( UNWIND_FOUND )
+
+	if( EXECINFO_FOUND )
+	  add_definitions( -DENABLE_EXECINFO )
+	endif( EXECINFO_FOUND )
+
+	if(ENABLE_BACKTRACE_ON_SIGNAL)
+		add_definitions( -DBACKTRACE_ON_SIGNAL )
+	endif()
+else()
+	add_definitions( -DDISABLE_BACKTRACE )
+endif()
+
 if( ENABLE_TINT2CONF )
   add_definitions( -DHAVE_VERSION_H )
   add_subdirectory( src/tint2conf )
@@ -126,7 +188,7 @@ if( ENABLE_TINT2CONF )
 endif( ENABLE_TINT2CONF )
 
 if( ENABLE_ASAN )
-  SET(ASAN_C_FLAGS " -O0 -g3 -gdwarf-2 -fsanitize=address -fno-common -fno-omit-frame-pointer -rdynamic ")
+  SET(ASAN_C_FLAGS " -O0 -g3 -gdwarf-2 -fsanitize=address -fno-common -fno-omit-frame-pointer -rdynamic -Wshadow")
   SET(ASAN_L_FLAGS " -O0 -g3 -gdwarf-2 -fsanitize=address -fno-common -fno-omit-frame-pointer -rdynamic ")
 else()
   SET(ASAN_C_FLAGS "")
@@ -156,7 +218,9 @@ target_link_libraries( tint2 ${X11_LIBRARIES}
                              ${CAIRO_LIBRARIES}
                              ${GLIB2_LIBRARIES}
                              ${GOBJECT2_LIBRARIES}
-                             ${IMLIB2_LIBRARIES} )
+							 ${IMLIB2_LIBRARIES}
+							 ${UNWIND_LIBRARIES}
+							 ${EXECINFO_LIBRARIES} )
 if( ENABLE_RSVG )
   target_link_libraries( tint2 ${RSVG_LIBRARIES} )
 endif( ENABLE_RSVG )
@@ -170,8 +234,8 @@ endif( RT_LIBRARY )
 target_link_libraries( tint2 m )
 
 add_dependencies( tint2 version )
-set_target_properties( tint2 PROPERTIES COMPILE_FLAGS "-Wall -fno-strict-aliasing -pthread ${ASAN_C_FLAGS}" )
-set_target_properties( tint2 PROPERTIES LINK_FLAGS "-pthread -fno-strict-aliasing ${ASAN_L_FLAGS}" )
+set_target_properties( tint2 PROPERTIES COMPILE_FLAGS "-Wall -Wpointer-arith -fno-strict-aliasing -pthread -std=c99 ${ASAN_C_FLAGS}" )
+set_target_properties( tint2 PROPERTIES LINK_FLAGS "-pthread -fno-strict-aliasing ${ASAN_L_FLAGS} ${BACKTRACE_L_FLAGS}" )
 
 install( TARGETS tint2 DESTINATION bin )
 install( FILES tint2.svg DESTINATION ${DATADIR}/icons/hicolor/scalable/apps )
