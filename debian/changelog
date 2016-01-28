@@ -1,3 +1,16 @@
+tint2 (1:0.12.6+git20160127-1semplice1) unstable; urgency=medium
+
+  [ o9000 ]
+  * Fix regression (all desktop tasks not working)
+  * Fix crash caused by race when reading _NET_CURRENT_DESKTOP and _NET_NUMBER_OF_DESKTOPS
+  * Fix small memory leak in launcher
+  * Fix regression in background rendering (issue #549)
+
+  [ Eugenio Paolantonio (g7) ]
+  * Cherry-pick bug fixes from the master branch
+
+ -- Eugenio Paolantonio (g7) <me@medesimo.eu>  Thu, 28 Jan 2016 13:21:23 +0100
+
 tint2 (1:0.12.6-1semplice1) unstable; urgency=medium
 
   [ o9000 ]
